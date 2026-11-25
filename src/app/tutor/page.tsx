@@ -1,21 +1,34 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Zap, User } from 'lucide-react';
-import { INITIAL_AI_MESSAGES, CURRENT_USER, ACTIVE_GOAL, LEARNER_PROFILE, SKILL_MASTERIES, SKILLS } from '@/lib/data/seed';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { Send, Zap } from 'lucide-react';
+import { INITIAL_AI_MESSAGES, CURRENT_USER, ACTIVE_GOAL, LEARNER_PROFILE, SKILLS } from '@/lib/data/seed';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import { useMastery } from '@/lib/context/MasteryContext';
+import { useStoredSettings } from '@/lib/hooks/useSettings';
+import { MasteryService } from '@/lib/services/mastery';
+import { GapAnalysisService } from '@/lib/services/gap-analysis';
 import type { AIMessage } from '@/lib/types';
 
-const SUGGESTED_PROMPTS = [
+/** Runtime AI availability — never assumed, always probed. */
+type AiStatus = 'checking' | 'available' | 'fallback';
+
+const suggestedPrompts = (targetRole: string) => [
   'What should I focus on this week?',
   'Explain backpropagation in terms of React concepts',
-  'How far am I from ML Engineer job-ready?',
+  `How far am I from ${targetRole} job-ready?`,
   'Create a 2-week sprint plan for me',
   'Why is linear algebra important for ML?',
   'Compare PyTorch vs TensorFlow for my goals',
 ];
 
-function MessageBubble({ message }: { message: AIMessage }) {
+/**
+ * A turn is set as a printed transcript entry, not as a chat bubble: the
+ * speaker is carried by a label and by the weight of the copy, so the two
+ * voices stay distinguishable without a coloured container each.
+ */
+function MessageTurn({ message }: { message: AIMessage }) {
   const isUser = message.role === 'user';
 
   return (
@@ -23,92 +36,87 @@ function MessageBubble({ message }: { message: AIMessage }) {
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}
+      className={isUser ? 'pl-3.5' : ''}
+      style={isUser ? { borderLeft: '2px solid var(--border-strong)' } : undefined}
     >
+      <div className="flex items-baseline gap-2.5 mb-1.5">
+        <span
+          className="k-label"
+          style={{ color: isUser ? 'var(--text-tertiary)' : 'var(--text-primary)' }}
+        >
+          {isUser ? 'You' : 'Nexus Tutor'}
+        </span>
+        <span className="nx-numeric text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {message.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+        </span>
+      </div>
+
       <div
-        className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+        className={isUser ? 'text-[13px] space-y-1.5' : 'text-sm space-y-2'}
         style={{
-          background: isUser
-            ? 'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)'
-            : 'var(--bg-elevated)',
-          border: isUser ? 'none' : '1px solid var(--border-subtle)',
+          color: isUser ? 'var(--text-secondary)' : 'var(--text-primary)',
+          lineHeight: 1.8,
+          maxWidth: '64ch',
         }}
       >
-        {isUser ? (
-          <User size={12} className="text-white" />
-        ) : (
-          <Zap size={12} style={{ color: 'var(--accent-violet-bright)' }} />
-        )}
+        {message.content.split('\n').map((line, i) => {
+          if (line.startsWith('**') && line.endsWith('**')) {
+            return (
+              <p key={i} className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {line.slice(2, -2)}
+              </p>
+            );
+          }
+          if (line === '') return <br key={i} />;
+          return <p key={i}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+        })}
       </div>
 
-      <div className={`max-w-[78%] ${isUser ? 'text-right' : ''}`}>
-        <div
-          className="rounded-xl px-4 py-2.5 text-[13px] leading-relaxed"
-          style={{
-            background: isUser ? 'var(--accent-violet)' : 'var(--bg-elevated)',
-            border: isUser ? 'none' : '1px solid var(--border-subtle)',
-            color: isUser ? 'white' : 'var(--text-primary)',
-            borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-          }}
-        >
-          {message.content.split('\n').map((line, i) => {
-            if (line.startsWith('**') && line.endsWith('**')) {
-              return <p key={i} className="font-semibold">{line.slice(2, -2)}</p>;
-            }
-            if (line === '') return <br key={i} />;
-            return <p key={i}>{line.replace(/\*\*(.*?)\*\*/g, '$1')}</p>;
+      {message.skillRefs && message.skillRefs.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {message.skillRefs.map(id => {
+            const skill = SKILLS.find(s => s.id === id);
+            return skill ? (
+              <span key={id} className="k-badge-quiet">{skill.name}</span>
+            ) : null;
           })}
         </div>
+      )}
 
-        {message.skillRefs && message.skillRefs.length > 0 && (
-          <div className={`mt-1.5 flex flex-wrap gap-1.5 ${isUser ? 'justify-end' : ''}`}>
-            {message.skillRefs.map(id => {
-              const skill = SKILLS.find(s => s.id === id);
-              return skill ? (
-                <span
-                  key={id}
-                  className="text-[9px] px-1.5 py-0.5 rounded-full"
-                  style={{ background: 'rgba(124,58,237,0.12)', color: 'var(--accent-violet-bright)', border: '1px solid rgba(124,58,237,0.25)' }}
-                >
-                  {skill.name}
-                </span>
-              ) : null;
-            })}
-          </div>
-        )}
-
-        <div className="mt-1 text-[9px]" style={{ color: 'var(--text-muted)' }}>
-          {message.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+      {message.source === 'fallback' && (
+        <div className="mt-2.5 flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="flex-none"
+            style={{ width: 8, height: 8, background: 'var(--amber)' }}
+          />
+          <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+            Local response · not generated by the model
+          </span>
         </div>
-      </div>
+      )}
     </motion.div>
   );
 }
 
 function TypingIndicator() {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <div className="flex gap-3">
-      <div
-        className="w-7 h-7 rounded-lg flex items-center justify-center"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
-      >
-        <Zap size={12} style={{ color: 'var(--accent-violet-bright)' }} />
+    <div>
+      <div className="k-label mb-2" style={{ color: 'var(--text-primary)' }}>
+        Nexus Tutor
       </div>
-      <div
-        className="px-4 py-3 rounded-xl"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}
-      >
-        <div className="flex gap-1.5 items-center">
-          {[0, 0.15, 0.3].map((delay) => (
-            <motion.div
-              key={delay}
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: 'var(--accent-violet-bright)' }}
-              animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
-              transition={{ duration: 1, delay, repeat: Infinity }}
-            />
-          ))}
-        </div>
+      <div className="flex gap-1.5 items-center" role="status" aria-label="Tutor is writing">
+        {[0, 0.15, 0.3].map((delay) => (
+          <motion.span
+            key={delay}
+            className="block"
+            style={{ width: 6, height: 6, background: 'var(--amber)' }}
+            animate={reduceMotion ? { opacity: 0.7 } : { opacity: [0.25, 1, 0.25] }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 1, delay, repeat: Infinity }}
+          />
+        ))}
       </div>
     </div>
   );
@@ -118,12 +126,86 @@ export default function TutorPage() {
   const [messages, setMessages] = useState<AIMessage[]>(INITIAL_AI_MESSAGES);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus>('checking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const { onboardingProfile } = useOnboarding();
+  const { masteries } = useMastery();
+  const { settings } = useStoredSettings();
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
+
+  // Ask the server whether the model is actually reachable. Anything other
+  // than an explicit yes means fallback — we never claim AI we don't have.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/tutor/status')
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('status unavailable'))))
+      .then(data => {
+        if (!cancelled) setAiStatus(data?.available ? 'available' : 'fallback');
+      })
+      .catch(() => {
+        if (!cancelled) setAiStatus('fallback');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  /** Live readiness from the shared service — same number Career reports. */
+  const readiness = useMemo(
+    () => (masteries.length > 0
+      ? MasteryService.computeOverallReadiness(masteries, ACTIVE_GOAL)
+      : ACTIVE_GOAL.progressPercent),
+    [masteries],
+  );
+
+  /**
+   * Learner context for the model, read from the existing providers rather
+   * than kept as a second copy. Profile facts come from onboarding when the
+   * learner has been through it; preferences come from Settings, which is the
+   * surface where they are editable. Falls back to the demo seed profile.
+   */
+  const topGaps = useMemo(
+    () => (masteries.length > 0
+      ? GapAnalysisService.computeSkillGaps(masteries, ACTIVE_GOAL, SKILLS).slice(0, 4)
+      : []),
+    [masteries],
+  );
+
+  const userContext = useMemo(() => {
+    const weaknesses = topGaps.length > 0
+      ? topGaps.map(g => g.skill.name)
+      : LEARNER_PROFILE.weaknesses;
+
+    const strengths = onboardingProfile && onboardingProfile.currentSkills.length > 0
+      ? onboardingProfile.currentSkills.map(s => s.name)
+      : LEARNER_PROFILE.strengths;
+
+    const weeklyHours = onboardingProfile?.weeklyHoursAvailable
+      ? `${onboardingProfile.weeklyHoursAvailable}h`
+      : settings.weeklyHours;
+
+    const formats = onboardingProfile && onboardingProfile.learningFormatPreference.length > 0
+      ? onboardingProfile.learningFormatPreference.join(', ')
+      : settings.preferredFormats;
+
+    return {
+      name: CURRENT_USER.name,
+      currentRole: onboardingProfile?.currentRole || LEARNER_PROFILE.currentRole,
+      targetRole: onboardingProfile?.targetRole || ACTIVE_GOAL.title,
+      goalProgress: readiness,
+      strengths,
+      weaknesses,
+      streakDays: CURRENT_USER.streakDays,
+      style: settings.learningStyle,
+      formats,
+      weeklyHours,
+      difficulty: settings.difficultyPreference,
+    };
+  }, [onboardingProfile, topGaps, settings, readiness]);
 
   async function sendMessage(content: string) {
     if (!content.trim() || isLoading) return;
@@ -144,14 +226,12 @@ export default function TutorPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, userMsg].map(m => ({ role: m.role, content: m.content })),
-          userContext: {
-            name: CURRENT_USER.name,
-            currentRole: LEARNER_PROFILE.currentRole,
-            targetRole: ACTIVE_GOAL.title,
-            goalProgress: ACTIVE_GOAL.progressPercent,
-            strengths: LEARNER_PROFILE.strengths,
-            weaknesses: LEARNER_PROFILE.weaknesses,
-            streakDays: CURRENT_USER.streakDays,
+          userContext,
+          settings: {
+            aiModel: settings.aiModel,
+            tutorPersonality: settings.tutorPersonality,
+            contextDepth: settings.contextDepth,
+            learningAnalogies: settings.learningAnalogies,
           },
         }),
       });
@@ -159,38 +239,55 @@ export default function TutorPage() {
       if (!response.ok) throw new Error('API error');
 
       const data = await response.json();
+      if (!data?.content) throw new Error('Empty response');
+
       const assistantMsg: AIMessage = {
         id: `msg_${Date.now()}_ai`,
         role: 'assistant',
         content: data.content,
         timestamp: new Date(),
         skillRefs: data.skillRefs,
+        source: 'ai',
       };
       setMessages(prev => [...prev, assistantMsg]);
+      // A real reply is stronger evidence than the startup probe.
+      setAiStatus('available');
     } catch {
       const fallbackMsg: AIMessage = {
         id: `msg_${Date.now()}_ai`,
         role: 'assistant',
         content: getFallbackResponse(content),
         timestamp: new Date(),
+        source: 'fallback',
       };
       setMessages(prev => [...prev, fallbackMsg]);
+      // The request failed, so whatever the probe said, we are in fallback.
+      setAiStatus('fallback');
     } finally {
       setIsLoading(false);
     }
   }
 
+  /**
+   * Deterministic local answers used when the model is unreachable. Numbers
+   * come from live mastery/gap state so this never contradicts the rest of the
+   * app; replies are labelled as local in the UI.
+   */
   function getFallbackResponse(question: string): string {
     const q = question.toLowerCase();
+    const focus = topGaps[0]?.skill.name;
+
     if (q.includes('focus') || q.includes('week')) {
-      return `This week, your highest-leverage activity is **Pandas** — it's the direct blocker for your EDA Project, which is on your critical path.
+      return focus
+        ? `This week, your highest-leverage skill is **${focus}** — it's the widest gap between where you are and ${userContext.targetRole}.
 
-Here's a suggested schedule for your 12h/week:
-• Mon/Wed/Fri: 2h Kaggle Pandas interactive course
-• Tue/Thu: 1.5h Linear Algebra videos (you're at ch. 4/15)
-• Weekend: 3h Python assessment prep + practice
+With ${userContext.weeklyHours} available, a workable split is:
+• Two longer sessions on ${focus} — that's where the compounding is
+• One shorter session on ${topGaps[1]?.skill.name ?? 'your next gap'}
+• One session reviewing what you already started, so it sticks
 
-If you hit Pandas Beginner by Sunday, you'll be back on schedule for your August target.`;
+Closing ${focus} is estimated at ~${topGaps[0].estimatedHoursToClose}h of focused work.`
+        : `You have no open skill gaps against ${userContext.targetRole} right now. The highest-leverage move is depth: pick a project that forces you to combine several skills at once, rather than adding another topic.`;
     }
     if (q.includes('backprop') || q.includes('neural')) {
       return `Great question — thinking in React terms is actually a perfect bridge.
@@ -208,27 +305,32 @@ Backward pass = React's reconciliation: starting from the error, we compute how 
 The key insight: once you see it as reverse-mode automatic differentiation, it's mechanically clear. The mystery disappears.`;
     }
     if (q.includes('job') || q.includes('ready') || q.includes('far')) {
+      const gapLines = topGaps.length > 0
+        ? topGaps
+            .map((g, i) => `${i + 1}. ${g.skill.name}: ${g.currentLevel} → ${g.requiredLevel} (est. ${g.estimatedHoursToClose}h)`)
+            .join('\n')
+        : 'No open gaps recorded against your target role.';
+      const remainingHours = topGaps.reduce((sum, g) => sum + g.estimatedHoursToClose, 0);
+
       return `Based on your current profile, here's an honest assessment:
 
-**Current readiness: ~31% toward ML Engineer minimum bar**
+**Current readiness: ${readiness}% toward ${userContext.targetRole} requirements**
 
 Your strongest transferable assets:
-• React/JS expertise → translates to building ML demos, data visualizations, LLM apps
-• API design → MLOps and model serving
-• TypeScript discipline → Python typing and code quality
+${userContext.strengths.slice(0, 4).map(s => `• ${s}`).join('\n')}
 
-**Critical gaps to close:**
-1. Python: Intermediate → Advanced (est. 40h)
-2. ML Fundamentals: Novice → Advanced (est. 120h)
-3. Linear Algebra + Statistics: Beginner → Intermediate (est. 100h combined)
+**Gaps to close:**
+${gapLines}
 
-**Realistic timeline:** 7–9 months at your current pace (12h/week, 1.3× velocity). Your biggest risk is the math track — most people underestimate it. I've scheduled it early for that reason.
+${remainingHours > 0
+  ? `That's roughly ${remainingHours}h of focused work across your top gaps. At ${userContext.weeklyHours} per week, expect that to take real months, not weeks — the math-heavy skills are the ones people underestimate.`
+  : 'Your remaining work is depth and evidence rather than new skills — build something that proves the ones you have.'}
 
-You're on a good trajectory. Keep the streak.`;
+Keep the streak going.`;
     }
-    return `I'm your NEXUS AI Tutor with full context of your learning journey. Based on your profile — frontend developer transitioning to ML Engineer, 31% complete, 23-day streak — I can help you with skill explanations, path strategy, learning plans, or anything else related to your goal.
+    return `I'm your NEXUS tutor. From your current context — ${userContext.currentRole} working toward ${userContext.targetRole}, ${readiness}% of role requirements met, ${userContext.streakDays}-day streak — I can help with skill explanations, path strategy, or planning.
 
-What specifically would you like to explore?`;
+What would you like to dig into?`;
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -239,146 +341,176 @@ What specifically would you like to explore?`;
   };
 
   return (
-    <div className="max-w-5xl h-[calc(100vh-7rem)] flex gap-5">
+    <div className="max-w-5xl h-[calc(100vh-7rem)] flex flex-col">
 
-      {/* ── Context panel ────────────────────────────────────────────────── */}
-      <div className="w-48 flex-shrink-0 flex flex-col gap-5 pt-1">
-        <div>
-          <div
-            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Context
-          </div>
-          <div className="space-y-2">
-            {[
-              { label: 'Learner', value: CURRENT_USER.name },
-              { label: 'Goal', value: 'ML Engineer' },
-              { label: 'Progress', value: `${ACTIVE_GOAL.progressPercent}%` },
-              { label: 'Streak', value: `${CURRENT_USER.streakDays} days 🔥` },
-              { label: 'Style', value: 'Hands-on' },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between text-[11px]">
-                <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-                <span style={{ color: 'var(--text-secondary)' }}>{value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '20px' }}>
-          <div className="flex items-center gap-2">
-            <motion.div
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ background: 'var(--accent-green)' }}
-              animate={{ opacity: [1, 0.4, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <span className="text-[10px]" style={{ color: 'var(--accent-green)' }}>
-              Claude Opus 5
-            </span>
-          </div>
-          <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Full learner context active
-          </div>
-        </div>
+      {/* ── Header, directly on the dark room ─────────────────────────────── */}
+      <div className="mb-5 md:mb-6">
+        <div className="k-slug mb-2">Tutor</div>
+        <h1 className="k-display-sm">Ask anything.</h1>
       </div>
 
-      {/* ── Chat ─────────────────────────────────────────────────────────── */}
-      <div
-        className="flex-1 flex flex-col rounded-xl overflow-hidden"
-        style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
-      >
-        {/* Header */}
-        <div
-          className="px-4 py-3 flex items-center gap-3"
-          style={{ borderBottom: '1px solid var(--border-subtle)' }}
-        >
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, var(--accent-violet), var(--accent-cyan))' }}
-          >
-            <Zap size={13} className="text-white" />
-          </div>
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-4 md:gap-5">
+
+        {/* ── Context sheet ──────────────────────────────────────────────── */}
+        <aside className="k-paper k-panel w-full md:w-56 flex-shrink-0 p-5 flex flex-col gap-5">
           <div>
-            <div className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>
-              NEXUS Tutor
-            </div>
-            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-              Personalized to your learning context
+            <div className="k-label mb-3">Context</div>
+            {/* Two columns on phones so the panel doesn't crowd out the chat. */}
+            <div className="grid grid-cols-2 md:grid-cols-1 gap-x-4 gap-y-2">
+              {[
+                { label: 'Learner', value: CURRENT_USER.name },
+                { label: 'Goal', value: userContext.targetRole },
+                { label: 'Readiness', value: `${readiness}%` },
+                { label: 'Streak', value: `${CURRENT_USER.streakDays} days` },
+                { label: 'Style', value: settings.learningStyle },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex justify-between gap-2 text-[11px]">
+                  <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                  <span
+                    className="nx-numeric text-right truncate"
+                    style={{ color: 'var(--text-primary)', fontWeight: 500 }}
+                  >
+                    {value}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-        </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map(msg => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
-          {isLoading && <TypingIndicator />}
-          <div ref={messagesEndRef} />
-        </div>
+          {/* Runtime status — reflects whether the model is actually reachable.
+              A marker and ink type, so an unavailable model reads as a stated
+              fact rather than as a decorated badge. */}
+          <div style={{ borderTop: '2px solid var(--border-strong)', paddingTop: 18 }}>
+            {aiStatus === 'available' ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <motion.span
+                    className="flex-none"
+                    style={{ width: 8, height: 8, background: 'var(--amber)' }}
+                    animate={reduceMotion ? { opacity: 1 } : { opacity: [1, 0.35, 1] }}
+                    transition={reduceMotion ? { duration: 0 } : { duration: 2, repeat: Infinity }}
+                  />
+                  <span className="k-label" style={{ color: 'var(--text-primary)' }}>
+                    AI Tutor · Available
+                  </span>
+                </div>
+                <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                  {settings.aiModel} · your learner context is sent with each message
+                </div>
+              </>
+            ) : aiStatus === 'checking' ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="flex-none"
+                    style={{ width: 8, height: 8, border: '2px solid var(--text-tertiary)' }}
+                  />
+                  <span className="k-label" style={{ color: 'var(--text-tertiary)' }}>
+                    AI Tutor · Checking
+                  </span>
+                </div>
+                <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                  Checking model availability
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="flex-none"
+                    style={{ width: 8, height: 8, background: 'var(--text-primary)' }}
+                  />
+                  <span className="k-label" style={{ color: 'var(--text-primary)' }}>
+                    AI Tutor · Fallback mode
+                  </span>
+                </div>
+                <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                  No model connection. Replies are written locally from your own
+                  progress data, not generated.
+                </div>
+              </>
+            )}
+          </div>
+        </aside>
 
-        {/* Suggested prompts */}
-        <div
-          className="px-4 py-2 flex gap-2 overflow-x-auto"
-          style={{ borderTop: '1px solid var(--border-subtle)' }}
-        >
-          {SUGGESTED_PROMPTS.map(prompt => (
-            <motion.button
-              key={prompt}
-              className="flex-shrink-0 px-2.5 py-1 rounded-full text-[10px]"
-              style={{
-                background: 'var(--bg-elevated)',
-                color: 'var(--text-secondary)',
-                border: '1px solid var(--border-subtle)',
-                whiteSpace: 'nowrap',
-              }}
-              whileHover={{ borderColor: 'rgba(124,58,237,0.5)', color: 'var(--accent-violet-bright)' }}
-              onClick={() => sendMessage(prompt)}
-            >
-              {prompt}
-            </motion.button>
-          ))}
-        </div>
-
-        {/* Input */}
-        <div className="p-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+        {/* ── Chat sheet — the primary object on this view ────────────────── */}
+        <div className="k-paper k-panel-hero flex-1 min-h-0 flex flex-col overflow-hidden">
+          {/* Header */}
           <div
-            className="flex items-end gap-2.5 rounded-xl p-2.5"
-            style={{ background: 'var(--bg-input)', border: '1px solid var(--border-default)' }}
+            className="px-5 py-4 flex items-center gap-3 flex-none"
+            style={{ borderBottom: '2px solid var(--border-strong)' }}
           >
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={e => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask about your path, skills, concepts, or strategy..."
-              rows={1}
-              className="flex-1 bg-transparent text-xs resize-none"
-              style={{
-                color: 'var(--text-primary)',
-                minHeight: '20px',
-                maxHeight: '120px',
-                outline: 'none',
-              }}
-            />
-            <motion.button
-              onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isLoading}
-              className="w-7 h-7 flex items-center justify-center rounded-lg flex-shrink-0"
-              style={{
-                background: input.trim() && !isLoading ? 'var(--accent-violet)' : 'var(--bg-overlay)',
-                color: input.trim() && !isLoading ? 'white' : 'var(--text-muted)',
-              }}
-              whileHover={input.trim() && !isLoading ? { scale: 1.08 } : {}}
-              whileTap={input.trim() && !isLoading ? { scale: 0.92 } : {}}
-            >
-              <Send size={12} />
-            </motion.button>
+            <span className="k-tile" style={{ width: 30, height: 30 }} aria-hidden="true">
+              <Zap size={14} />
+            </span>
+            <div>
+              <div className="k-display-sm" style={{ fontSize: '0.9375rem' }}>
+                NEXUS Tutor
+              </div>
+              <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                Personalized to your learning context
+              </div>
+            </div>
           </div>
-          <div className="mt-1.5 text-[9px] text-center" style={{ color: 'var(--text-muted)' }}>
-            Enter to send · Shift+Enter for new line
+
+          {/* Transcript */}
+          <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
+            {messages.map(msg => (
+              <MessageTurn key={msg.id} message={msg} />
+            ))}
+            {isLoading && <TypingIndicator />}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Suggested prompts */}
+          <div
+            className="px-5 py-3 flex gap-2 overflow-x-auto flex-none"
+            style={{ borderTop: '1px solid var(--border-default)' }}
+          >
+            {suggestedPrompts(userContext.targetRole).map(prompt => (
+              <button
+                key={prompt}
+                className="flex-shrink-0 px-2.5 py-1.5 text-[11px] whitespace-nowrap transition-colors hover:bg-[var(--bg-elevated)]"
+                style={{ border: '1px solid var(--border-strong)', color: 'var(--text-secondary)' }}
+                onClick={() => sendMessage(prompt)}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div className="p-4 flex-none" style={{ borderTop: '2px solid var(--border-strong)' }}>
+            <div className="k-field flex items-end gap-2.5 p-2.5">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask about your path, skills, concepts, or strategy..."
+                rows={1}
+                className="flex-1 bg-transparent text-[13px] resize-none"
+                style={{
+                  color: 'var(--text-primary)',
+                  minHeight: '20px',
+                  maxHeight: '120px',
+                }}
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={!input.trim() || isLoading}
+                aria-label="Send message"
+                className="k-btn k-btn-amber flex-shrink-0"
+                style={{ width: 32, height: 32, padding: 0, boxShadow: 'var(--k-shadow-sm)' }}
+              >
+                <Send size={13} />
+              </button>
+            </div>
+            <div className="mt-2 text-[11px] text-center" style={{ color: 'var(--text-muted)' }}>
+              Enter to send · Shift+Enter for new line
+            </div>
           </div>
         </div>
       </div>
