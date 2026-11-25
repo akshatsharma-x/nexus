@@ -3,6 +3,10 @@
 import { motion, useReducedMotion } from 'framer-motion';
 import type { OnboardingInsight } from '@/lib/types';
 
+// The conversation is set on stock, so every colour here is read from the
+// surface variables rather than hardcoded — the components are placed inside a
+// .k-paper sheet by the page and must not carry a surface of their own.
+
 // ─── NEXUS message ────────────────────────────────────────────────────────────
 
 interface AssistantMessageProps {
@@ -15,15 +19,12 @@ export function AssistantMessage({ content, insight, index = 0 }: AssistantMessa
   const shouldReduce = useReducedMotion();
   return (
     <motion.div
-      className="space-y-4"
+      className="space-y-3"
       initial={shouldReduce ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut', delay: index * 0.04 }}
     >
-      <div
-        className="text-[10px] font-semibold tracking-[0.15em] uppercase select-none"
-        style={{ color: 'var(--text-muted)' }}
-      >
+      <div className="k-label select-none" style={{ color: 'var(--text-tertiary)' }}>
         NEXUS
       </div>
       <div
@@ -34,18 +35,13 @@ export function AssistantMessage({ content, insight, index = 0 }: AssistantMessa
       </div>
       {insight && (
         <motion.div
-          className="pl-4 space-y-1.5"
-          style={{ borderLeft: '2px solid rgba(124,58,237,0.3)' }}
+          className="k-well px-4 py-3 space-y-1.5"
+          style={{ borderLeft: '3px solid var(--amber)', maxWidth: '36rem' }}
           initial={shouldReduce ? false : { opacity: 0, y: 4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3, duration: 0.3 }}
         >
-          <div
-            className="text-[10px] font-semibold tracking-[0.15em] uppercase"
-            style={{ color: 'var(--accent-violet-bright)' }}
-          >
-            NEXUS noticed
-          </div>
+          <div className="k-slug">NOTICED</div>
           <div className="text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             {insight.text}
           </div>
@@ -70,9 +66,16 @@ export function UserMessage({ content }: UserMessageProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
     >
+      {/* The reader's own words are the quieter voice: right margin, no label,
+          no container — the answer is a note in the margin of the interview. */}
       <p
-        className="text-[14px] leading-[1.7] text-right"
-        style={{ color: 'var(--text-secondary)', maxWidth: '32rem' }}
+        className="text-[14px] leading-[1.7] text-right pl-8"
+        style={{
+          color: 'var(--text-secondary)',
+          maxWidth: '32rem',
+          borderRight: '2px solid var(--border-default)',
+          paddingRight: '0.875rem',
+        }}
       >
         {content}
       </p>
@@ -86,28 +89,28 @@ export function TypingIndicator() {
   const shouldReduce = useReducedMotion();
   return (
     <motion.div
-      className="space-y-2"
+      className="space-y-3"
       initial={shouldReduce ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div
-        className="text-[10px] font-semibold tracking-[0.15em] uppercase select-none"
-        style={{ color: 'var(--text-muted)' }}
-      >
+      <div className="k-label select-none" style={{ color: 'var(--text-tertiary)' }}>
         NEXUS
       </div>
-      <div className="flex items-center gap-1.5" aria-label="NEXUS is thinking">
-        {[0, 1, 2].map(i => (
-          <motion.span
-            key={i}
-            className="w-[5px] h-[5px] rounded-full block"
-            style={{ background: 'var(--text-muted)' }}
-            animate={shouldReduce ? {} : { opacity: [0.3, 1, 0.3] }}
-            transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.2 }}
-          />
-        ))}
+      {/* One ink caret in place of pulsing dots. The blink is the loading state
+          itself, which is why it keeps repeating — and stops under reduced
+          motion, where the caret simply sits in the measure. */}
+      <div className="flex items-center gap-3" role="status">
+        <span className="sr-only">NEXUS is thinking</span>
+        <motion.span
+          aria-hidden="true"
+          className="block"
+          style={{ width: '2px', height: '1.1rem', background: 'var(--text-primary)' }}
+          animate={shouldReduce ? {} : { opacity: [1, 0.12, 1] }}
+          transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+        <span aria-hidden="true" className="block" style={{ width: '2.5rem', height: '2px', background: 'var(--amber)' }} />
       </div>
     </motion.div>
   );
@@ -123,10 +126,10 @@ interface SuggestedRepliesProps {
 function SuggestionItem({ text, onSelect }: { text: string; onSelect: () => void }) {
   return (
     <button
-      className="block w-full text-left text-[13px] leading-relaxed transition-colors duration-150 py-0.5"
-      style={{ color: 'var(--text-tertiary)' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)'; }}
+      className="block w-full text-left text-[13px] leading-relaxed py-2 transition-colors duration-150"
+      style={{ color: 'var(--text-secondary)', borderTop: '1px solid var(--border-subtle)' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
       onClick={onSelect}
     >
       {text}
@@ -143,12 +146,10 @@ export function SuggestedReplies({ replies, onSelect }: SuggestedRepliesProps) {
       initial={shouldReduce ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, delay: 0.12 }}
+      style={{ maxWidth: '36rem' }}
     >
-      <div
-        className="text-[10px] font-semibold tracking-[0.15em] uppercase"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        Suggestions
+      <div className="k-label" style={{ color: 'var(--text-tertiary)' }}>
+        Or answer with
       </div>
       <div>
         {replies.map(r => (

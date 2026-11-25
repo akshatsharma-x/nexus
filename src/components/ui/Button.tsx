@@ -21,31 +21,37 @@ interface ButtonProps {
   'aria-label'?: string;
 }
 
-const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
-  primary: { background: 'var(--accent-violet)', color: 'white', border: '1px solid transparent' },
-  secondary: {
-    background: 'var(--bg-elevated)',
-    color: 'var(--text-primary)',
-    border: '1px solid var(--border-default)',
-  },
-  ghost: { background: 'transparent', color: 'var(--text-secondary)', border: '1px solid transparent' },
-  danger: {
-    background: 'rgba(244,63,94,0.1)',
-    color: 'var(--accent-rose)',
-    border: '1px solid rgba(244,63,94,0.25)',
-  },
-  success: {
-    background: 'rgba(16,185,129,0.12)',
-    color: 'var(--accent-green)',
-    border: '1px solid rgba(16,185,129,0.25)',
-  },
+const VARIANT_CLASS: Record<ButtonVariant, string> = {
+  primary: 'k-btn-amber',
+  secondary: 'k-btn-outline',
+  ghost: '',
+  danger: 'k-btn-outline',
+  success: 'k-btn-outline',
 };
 
-const SIZES: Record<ButtonSize, string> = {
-  xs: 'px-2 py-1 text-[10px] rounded-md gap-1',
-  sm: 'px-3 py-1.5 text-xs rounded-lg gap-1.5',
-  md: 'px-4 py-2 text-sm rounded-lg gap-2',
-  lg: 'px-5 py-2.5 text-sm rounded-xl gap-2',
+/* The two semantic variants are the outline key re-inked: the accent carries the
+   type and, through currentColor, the rule as well. Every value is a variable so
+   the same button reads on the dark room and on stock. */
+const VARIANT_STYLE: Record<ButtonVariant, React.CSSProperties> = {
+  primary: {},
+  secondary: {},
+  ghost: {
+    background: 'transparent',
+    borderColor: 'transparent',
+    boxShadow: 'none',
+    color: 'var(--text-secondary)',
+  },
+  danger: { color: 'var(--accent-rose)', borderColor: 'currentColor' },
+  success: { color: 'var(--accent-green)', borderColor: 'currentColor' },
+};
+
+/* Sizing is inline rather than in utility classes: .k-btn is unlayered CSS and
+   would win over Tailwind's layered padding and font-size utilities. */
+const SIZE_STYLE: Record<ButtonSize, React.CSSProperties> = {
+  xs: { padding: '0.25rem 0.5rem', fontSize: 11, gap: '0.375rem' },
+  sm: { padding: '0.375rem 0.75rem', fontSize: 11, gap: '0.4375rem' },
+  md: { padding: '0.5rem 1rem', fontSize: 12, gap: '0.5rem' },
+  lg: { padding: '0.75rem 1.25rem', fontSize: 13, gap: '0.625rem' },
 };
 
 export function Button({
@@ -61,21 +67,18 @@ export function Button({
   type = 'button',
   'aria-label': ariaLabel,
 }: ButtonProps) {
-  const style = VARIANT_STYLES[variant];
-  const sizeClass = SIZES[size];
   const isDisabled = disabled || loading;
 
   return (
-    <motion.button
+    <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center font-medium transition-colors',
-        sizeClass,
-        isDisabled ? 'opacity-50 cursor-not-allowed pointer-events-none' : '',
+        'k-btn',
+        VARIANT_CLASS[variant],
+        isDisabled ? 'cursor-not-allowed pointer-events-none' : '',
         className,
       )}
-      style={style}
-      whileTap={isDisabled ? {} : { scale: 0.97 }}
+      style={{ ...VARIANT_STYLE[variant], ...SIZE_STYLE[size] }}
       disabled={isDisabled}
       onClick={onClick}
       aria-label={ariaLabel}
@@ -91,6 +94,6 @@ export function Button({
       {!loading && Icon && iconPosition === 'left' && <Icon size={12} aria-hidden="true" />}
       {children}
       {!loading && Icon && iconPosition === 'right' && <Icon size={12} aria-hidden="true" />}
-    </motion.button>
+    </button>
   );
 }

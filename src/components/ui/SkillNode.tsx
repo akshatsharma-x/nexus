@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import type { SkillLevel } from '@/lib/types';
-import { skillLevelColor, skillLevelLabel } from '@/lib/utils';
+import { skillLevelLabel } from '@/lib/utils';
 
 type SkillNodeState = 'mastered' | 'strong' | 'developing' | 'weak' | 'locked' | 'recommended';
 
@@ -33,6 +33,13 @@ const SIZES = {
   lg: { node: 80, font: 32, label: 84 },
 };
 
+/* Depth replaces the old glow: mastery casts a hard ink offset, a recommendation
+   casts an amber one. Both are drawn blocks, so they survive on cream. */
+const STATE_SHADOW: Partial<Record<SkillNodeState, string>> = {
+  mastered: 'var(--k-shadow-sm)',
+  recommended: '3px 3px 0 0 var(--amber)',
+};
+
 export function SkillNode({
   name,
   icon = '🧠',
@@ -45,14 +52,15 @@ export function SkillNode({
   showScore = true,
 }: SkillNodeProps) {
   const state = stateProp ?? deriveState(level, score);
-  const color = level ? skillLevelColor(level) : 'var(--text-muted)';
+  /* The ramp variable rather than skillLevelColor(): .k-paper re-cuts every
+     --skill-* step for cream, where the dark-room hex would fall to ~2:1. */
+  const color = level ? `var(--skill-${level})` : 'var(--text-muted)';
   const dim = SIZES[size];
   const isLocked = state === 'locked';
-  const isRecommended = state === 'recommended';
 
   return (
     <motion.button
-      className="flex flex-col items-center gap-1.5"
+      className="flex flex-col items-center gap-2"
       onClick={onClick}
       whileHover={!isLocked ? { scale: 1.06 } : {}}
       whileTap={!isLocked ? { scale: 0.96 } : {}}
@@ -61,21 +69,14 @@ export function SkillNode({
     >
       {/* Node */}
       <div className="relative" style={{ width: dim.node, height: dim.node }}>
-        {/* Main circle */}
+        {/* Main block */}
         <div
-          className="absolute inset-0 rounded-xl flex items-center justify-center"
+          className="absolute inset-0 flex items-center justify-center"
           style={{
-            background: isLocked ? 'var(--bg-elevated)' : `${color}18`,
-            border: isLocked
-              ? '2px dashed var(--border-subtle)'
-              : `2px solid ${color}`,
-            boxShadow:
-              state === 'mastered'
-                ? `0 0 20px ${color}50, 0 0 6px ${color}30`
-                : state === 'strong'
-                ? `0 0 12px ${color}35`
-                : 'none',
-            opacity: isLocked ? 0.45 : 1,
+            background: isLocked ? 'transparent' : 'var(--bg-surface)',
+            border: isLocked ? '2px dashed var(--k-edge)' : `2px solid ${color}`,
+            boxShadow: isLocked ? undefined : STATE_SHADOW[state],
+            opacity: isLocked ? 0.55 : 1,
           }}
         >
           <span
@@ -86,22 +87,20 @@ export function SkillNode({
           </span>
         </div>
 
-        {/* Recommended orbit */}
-        {isRecommended && (
-          <motion.div
-            className="absolute inset-0 rounded-xl"
-            style={{ border: `2px dashed ${color}`, borderStyle: 'dashed' }}
-            animate={{ rotate: 360 }}
-            transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
-            aria-hidden="true"
-          />
-        )}
-
         {/* Score badge */}
         {showScore && score !== undefined && score > 0 && !isLocked && (
           <div
-            className="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold"
-            style={{ background: color, color: 'white', lineHeight: 1.3 }}
+            className="absolute -bottom-2 -right-2 px-1.5"
+            style={{
+              background: 'var(--amber)',
+              color: 'var(--ink)',
+              border: '1px solid var(--k-edge)',
+              fontFamily: 'var(--font-display)',
+              fontSize: 11,
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1.5,
+            }}
             aria-hidden="true"
           >
             {score}
@@ -111,8 +110,8 @@ export function SkillNode({
         {/* Lock badge */}
         {isLocked && (
           <div
-            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center text-[10px]"
-            style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-subtle)' }}
+            className="absolute -bottom-1 -right-1 w-4 h-4 flex items-center justify-center text-[10px]"
+            style={{ background: 'var(--bg-surface)', border: '1px solid var(--k-edge)' }}
             aria-hidden="true"
           >
             🔒
@@ -123,7 +122,7 @@ export function SkillNode({
       {/* Label */}
       {showLabel && (
         <div
-          className="text-[10px] font-medium text-center leading-tight"
+          className="text-[11px] font-medium text-center leading-tight"
           style={{
             color: isLocked ? 'var(--text-muted)' : 'var(--text-primary)',
             maxWidth: dim.label,

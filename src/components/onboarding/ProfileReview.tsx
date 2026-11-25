@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Edit2, Check, X, ArrowRight } from 'lucide-react';
 import type { OnboardingProfile, OnboardingSkill } from '@/lib/types';
 import { extractTargetRole, extractTimeline } from '@/lib/services/onboarding';
@@ -23,12 +23,9 @@ function EditableField({ label, value, onSave, placeholder = '—' }: EditableFi
   return (
     <div
       className="group py-3"
-      style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      style={{ borderTop: '1px solid var(--border-subtle)' }}
     >
-      <div
-        className="text-[10px] font-semibold tracking-[0.12em] uppercase mb-1.5"
-        style={{ color: 'var(--text-muted)' }}
-      >
+      <div className="k-label mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
         {label}
       </div>
       <div className="flex items-start justify-between gap-3">
@@ -37,12 +34,7 @@ function EditableField({ label, value, onSave, placeholder = '—' }: EditableFi
             autoFocus
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            className="flex-1 text-sm outline-none rounded px-2 py-1"
-            style={{
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--accent-violet)',
-              color: 'var(--text-primary)',
-            }}
+            className="k-field flex-1 text-sm px-2.5 py-1.5"
             onKeyDown={e => {
               if (e.key === 'Enter') { onSave(draft); setEditing(false); }
               if (e.key === 'Escape') { setDraft(value); setEditing(false); }
@@ -51,40 +43,42 @@ function EditableField({ label, value, onSave, placeholder = '—' }: EditableFi
           />
         ) : (
           <div
-            className="text-sm flex-1"
-            style={{ color: value ? 'var(--text-primary)' : 'var(--text-tertiary)' }}
+            className="text-sm flex-1 leading-relaxed"
+            style={{ color: value ? 'var(--text-primary)' : 'var(--text-muted)' }}
           >
             {display}
           </div>
         )}
 
         {editing ? (
-          <div className="flex gap-1 flex-shrink-0">
+          <div className="flex gap-1.5 flex-shrink-0">
             <button
               onClick={() => { onSave(draft); setEditing(false); }}
-              className="w-6 h-6 rounded flex items-center justify-center"
-              style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--accent-green)' }}
+              className="w-7 h-7 flex items-center justify-center"
+              style={{ background: 'var(--amber)', color: 'var(--ink)', border: '2px solid var(--k-edge)' }}
               aria-label="Save"
             >
-              <Check size={10} />
+              <Check size={12} />
             </button>
             <button
               onClick={() => { setDraft(value); setEditing(false); }}
-              className="w-6 h-6 rounded flex items-center justify-center"
-              style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+              className="w-7 h-7 flex items-center justify-center"
+              style={{ color: 'var(--text-secondary)', border: '2px solid var(--border-default)' }}
               aria-label="Cancel"
             >
-              <X size={10} />
+              <X size={12} />
             </button>
           </div>
         ) : (
+          /* Revealed on hover, but also on keyboard focus — the pencil is the
+             only way into the field, so it cannot be mouse-only. */
           <button
             onClick={() => { setDraft(value); setEditing(true); }}
-            className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 w-6 h-6 rounded flex items-center justify-center"
-            style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}
+            className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0 w-7 h-7 flex items-center justify-center"
+            style={{ color: 'var(--text-secondary)', border: '2px solid var(--border-default)' }}
             aria-label={`Edit ${label}`}
           >
-            <Edit2 size={10} />
+            <Edit2 size={12} />
           </button>
         )}
       </div>
@@ -95,18 +89,8 @@ function EditableField({ label, value, onSave, placeholder = '—' }: EditableFi
 // ─── Skill chip ───────────────────────────────────────────────────────────────
 
 function SkillChip({ skill }: { skill: OnboardingSkill }) {
-  const map: Record<OnboardingSkill['confidence'], { bg: string; text: string; border: string; label: string }> = {
-    strong:      { bg: 'rgba(16,185,129,0.1)',  text: 'var(--accent-green)',          border: 'rgba(16,185,129,0.2)',  label: 'strong'      },
-    comfortable: { bg: 'rgba(124,58,237,0.08)', text: 'var(--accent-violet-bright)', border: 'rgba(124,58,237,0.18)', label: 'comfortable' },
-    learning:    { bg: 'rgba(245,158,11,0.08)', text: 'var(--accent-amber)',          border: 'rgba(245,158,11,0.18)', label: 'learning'    },
-  };
-  const c = map[skill.confidence];
   return (
-    <span
-      className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full"
-      style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
-      title={c.label}
-    >
+    <span className="k-badge-quiet text-[11px]" title={skill.confidence}>
       {skill.name}
     </span>
   );
@@ -121,7 +105,16 @@ interface ProfileReviewProps {
 }
 
 export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps) {
-  const [edited, setEdited] = useState<OnboardingProfile>({ ...profile });
+  const shouldReduce = useReducedMotion();
+  // A spread alone would leave currentSkills pointing at the parent's array, so
+  // the draft and the live profile would share it. Copy the array too.
+  const [edited, setEdited] = useState<OnboardingProfile>(() => ({
+    ...profile,
+    currentSkills: Array.isArray(profile.currentSkills) ? [...profile.currentSkills] : [],
+    learningFormatPreference: Array.isArray(profile.learningFormatPreference)
+      ? [...profile.learningFormatPreference]
+      : [],
+  }));
 
   const update = (key: keyof OnboardingProfile) => (value: string) => {
     setEdited(p => ({ ...p, [key]: value }));
@@ -149,77 +142,63 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
 
   return (
     <motion.div
-      className="max-w-lg mx-auto w-full"
-      initial={{ opacity: 0, y: 16 }}
+      className="w-full"
+      style={{ maxWidth: '36rem' }}
+      initial={shouldReduce ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
       {/* Header */}
-      <div className="mb-8">
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-          style={{ color: 'var(--accent-violet-bright)' }}
-        >
-          Learner Profile
-        </div>
-        <h2 className="text-2xl font-bold mb-2.5" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-          Here's what I understood<br />about you.
+      <div className="mb-6">
+        <div className="k-slug">Learner profile</div>
+        <h2 className="k-display-sm mt-2.5 mb-2.5">
+          Here&apos;s what I understood
         </h2>
-        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          Hover any field to edit. When it looks right, let's build your path.
+        <p className="nx-support">
+          Hover or tab to any line to change it. When it reads true, I&apos;ll build the map.
         </p>
       </div>
 
       {/* Goal + role */}
-      <div className="mb-2">
-        <EditableField label="Goal" value={edited.goal} onSave={update('goal')} placeholder="Describe your goal" />
-        <EditableField
-          label="Target role"
-          value={edited.targetRole}
-          onSave={v => {
-            const roleResult = extractTargetRole(v);
-            setEdited(p => ({
-              ...p,
-              targetRole: v,
-              targetRoleId: roleResult ? roleResult.track : p.targetRoleId,
-            }));
-          }}
-          placeholder="e.g. ML Engineer"
-        />
-      </div>
+      <EditableField label="Goal" value={edited.goal} onSave={update('goal')} placeholder="Describe your goal" />
+      <EditableField
+        label="Target role"
+        value={edited.targetRole}
+        onSave={v => {
+          const roleResult = extractTargetRole(v);
+          setEdited(p => ({
+            ...p,
+            targetRole: v,
+            targetRoleId: roleResult ? roleResult.track : p.targetRoleId,
+          }));
+        }}
+        placeholder="e.g. ML Engineer"
+      />
 
       {/* Background */}
-      <div className="mb-2">
-        <EditableField label="Current role" value={edited.currentRole} onSave={update('currentRole')} placeholder="e.g. Frontend Developer" />
-        <EditableField
-          label="Experience level"
-          value={expLabel}
-          onSave={v => setEdited(p => ({
-            ...p,
-            experienceLevel: (['beginner', 'intermediate', 'advanced'].includes(v.toLowerCase())
-              ? v.toLowerCase()
-              : p.experienceLevel) as OnboardingProfile['experienceLevel'],
-          }))}
-          placeholder="Beginner / Intermediate / Advanced"
-        />
-      </div>
+      <EditableField label="Current role" value={edited.currentRole} onSave={update('currentRole')} placeholder="e.g. Frontend Developer" />
+      <EditableField
+        label="Experience level"
+        value={expLabel}
+        onSave={v => setEdited(p => ({
+          ...p,
+          experienceLevel: (['beginner', 'intermediate', 'advanced'].includes(v.toLowerCase())
+            ? v.toLowerCase()
+            : p.experienceLevel) as OnboardingProfile['experienceLevel'],
+        }))}
+        placeholder="Beginner / Intermediate / Advanced"
+      />
 
       {/* Skills — display only */}
       {edited.currentSkills.length > 0 && (
-        <div
-          className="py-3"
-          style={{ borderBottom: '1px solid var(--border-subtle)' }}
-        >
-          <div
-            className="text-[10px] font-semibold tracking-[0.12em] uppercase mb-3"
-            style={{ color: 'var(--text-muted)' }}
-          >
+        <div className="py-3" style={{ borderTop: '1px solid var(--border-subtle)' }}>
+          <div className="k-label mb-3" style={{ color: 'var(--text-tertiary)' }}>
             Skills
           </div>
-          <div className="space-y-2.5">
+          <div className="space-y-3">
             {strongSkills.length > 0 && (
               <div>
-                <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--accent-green)' }}>Strong</div>
+                <div className="k-label mb-1.5" style={{ color: 'var(--text-secondary)' }}>Strong</div>
                 <div className="flex flex-wrap gap-1.5">
                   {strongSkills.map(s => <SkillChip key={s.name} skill={s} />)}
                 </div>
@@ -227,7 +206,7 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
             )}
             {comfortableSkills.length > 0 && (
               <div>
-                <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--accent-violet-bright)' }}>Comfortable</div>
+                <div className="k-label mb-1.5" style={{ color: 'var(--text-secondary)' }}>Comfortable</div>
                 <div className="flex flex-wrap gap-1.5">
                   {comfortableSkills.map(s => <SkillChip key={s.name} skill={s} />)}
                 </div>
@@ -235,7 +214,7 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
             )}
             {learningSkills.length > 0 && (
               <div>
-                <div className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--accent-amber)' }}>Developing</div>
+                <div className="k-label mb-1.5" style={{ color: 'var(--text-secondary)' }}>Developing</div>
                 <div className="flex flex-wrap gap-1.5">
                   {learningSkills.map(s => <SkillChip key={s.name} skill={s} />)}
                 </div>
@@ -246,68 +225,55 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
       )}
 
       {/* Schedule */}
-      <div className="mb-2">
-        <EditableField
-          label="Weekly availability"
-          value={hoursLabel}
-          onSave={v => {
-            const n = parseInt(v.replace(/\D/g, ''));
-            if (!isNaN(n) && n > 0) setEdited(p => ({ ...p, weeklyHoursAvailable: n }));
-          }}
-          placeholder="e.g. 8 hours / week"
-        />
-        <EditableField
-          label="Target timeline"
-          value={timelineLabel}
-          onSave={v => {
-            const tl = extractTimeline(v);
-            setEdited(p => ({
-              ...p,
-              targetDateRaw: tl ? tl.raw : v,
-              targetDate: tl ? tl.date : p.targetDate,
-            }));
-          }}
-          placeholder="e.g. 6 months"
-        />
-        <EditableField
-          label="Learning preferences"
-          value={prefsLabel}
-          onSave={v => {
-            const parts = v.split(',').map(s => s.trim()).filter(Boolean) as OnboardingProfile['learningFormatPreference'];
-            setEdited(p => ({ ...p, learningFormatPreference: parts }));
-          }}
-          placeholder="e.g. video, project"
-        />
-      </div>
+      <EditableField
+        label="Weekly availability"
+        value={hoursLabel}
+        onSave={v => {
+          const n = parseInt(v.replace(/\D/g, ''));
+          if (!isNaN(n) && n > 0) setEdited(p => ({ ...p, weeklyHoursAvailable: n }));
+        }}
+        placeholder="e.g. 8 hours / week"
+      />
+      <EditableField
+        label="Target timeline"
+        value={timelineLabel}
+        onSave={v => {
+          const tl = extractTimeline(v);
+          setEdited(p => ({
+            ...p,
+            targetDateRaw: tl ? tl.raw : v,
+            targetDate: tl ? tl.date : p.targetDate,
+          }));
+        }}
+        placeholder="e.g. 6 months"
+      />
+      <EditableField
+        label="Learning preferences"
+        value={prefsLabel}
+        onSave={v => {
+          const parts = v.split(',').map(s => s.trim()).filter(Boolean) as OnboardingProfile['learningFormatPreference'];
+          setEdited(p => ({ ...p, learningFormatPreference: parts }));
+        }}
+        placeholder="e.g. video, project"
+      />
+
+      <hr className="k-rule-hard mt-1" />
 
       {/* CTAs */}
-      <div className="flex flex-col sm:flex-row gap-3 mt-8">
-        <motion.button
-          className="flex-1 flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl text-sm font-semibold"
-          style={{
-            background: 'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)',
-            color: 'white',
-          }}
-          whileHover={{ scale: 1.015 }}
-          whileTap={{ scale: 0.975 }}
+      <div className="flex flex-col sm:flex-row gap-3 mt-6">
+        <button
+          className="k-btn k-btn-amber flex-1"
           onClick={() => onConfirm(edited)}
         >
           Build my learning map
           <ArrowRight size={14} />
-        </motion.button>
-        <motion.button
-          className="px-5 py-3.5 rounded-xl text-sm"
-          style={{
-            background: 'var(--bg-elevated)',
-            color: 'var(--text-secondary)',
-            border: '1px solid var(--border-subtle)',
-          }}
-          whileHover={{ background: 'var(--bg-overlay)' }}
-          whileTap={{ scale: 0.98 }}
+        </button>
+        <button
+          className="k-btn k-btn-outline"
           onClick={onEdit}
         >
-          Edit profile
-        </motion.button>
+          Keep talking
+        </button>
       </div>
     </motion.div>
   );

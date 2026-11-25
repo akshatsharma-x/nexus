@@ -12,32 +12,31 @@ interface GlowCardProps {
   style?: React.CSSProperties;
 }
 
-const glowStyles: Record<string, string> = {
-  violet: 'var(--accent-violet-glow)',
-  cyan: 'var(--accent-cyan-glow)',
-  green: 'var(--accent-green-glow)',
-  amber: 'var(--accent-amber-glow)',
-  none: 'transparent',
+/* The name predates the paper language and is kept because many files import it.
+   `glowColor` now picks the colour of a hard 2px rule rather than a blur, so the
+   card is a printed sheet with a coded edge; 'none' stays the quiet default. */
+const EDGE_COLORS: Record<string, string> = {
+  violet: 'var(--accent-violet-bright)',
+  cyan: 'var(--accent-cyan-bright)',
+  green: 'var(--accent-green-bright)',
+  amber: 'var(--amber-deep)',
+  none: 'var(--k-edge)',
 };
 
 export function GlowCard({ children, className, glowColor = 'none', hover = true, onClick, style }: GlowCardProps) {
-  const glow = glowStyles[glowColor];
+  const edge = EDGE_COLORS[glowColor];
 
   return (
     <motion.div
-      className={cn('relative rounded-xl overflow-hidden', className)}
+      className={cn('relative overflow-hidden', className)}
       style={{
         background: 'var(--bg-surface)',
-        border: '1px solid var(--border-subtle)',
-        boxShadow: glowColor !== 'none' ? `0 0 30px ${glow}` : undefined,
+        border: `2px solid ${edge}`,
+        boxShadow: 'var(--k-shadow-sm)',
         cursor: onClick ? 'pointer' : undefined,
         ...style,
       }}
-      whileHover={hover ? {
-        borderColor: 'var(--border-default)',
-        y: -1,
-        transition: { duration: 0.2 }
-      } : undefined}
+      whileHover={hover ? { y: -2, transition: { duration: 0.2 } } : undefined}
       onClick={onClick}
     >
       {children}

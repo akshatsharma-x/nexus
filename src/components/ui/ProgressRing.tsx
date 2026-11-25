@@ -17,8 +17,11 @@ export function ProgressRing({
   progress,
   size = 64,
   strokeWidth = 4,
-  color = 'url(#progressGrad)',
-  trackColor = 'rgba(255,255,255,0.05)',
+  /* A ring is one of the few genuine circles the language keeps, but its arc is
+     the amber block and its track is the ink rule — both read on the room and on
+     stock, which the old violet-to-cyan gradient did not. */
+  color = 'var(--amber)',
+  trackColor = 'var(--k-edge)',
   label,
   sublabel,
   delay = 0.3,
@@ -41,13 +44,6 @@ export function ProgressRing({
         aria-label={`Progress: ${clampedProgress}%`}
         role="img"
       >
-        <defs>
-          <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="var(--accent-violet)" />
-            <stop offset="100%" stopColor="var(--accent-cyan)" />
-          </linearGradient>
-        </defs>
-
         {/* Track */}
         <circle
           cx={cx}
@@ -66,7 +62,7 @@ export function ProgressRing({
           fill="none"
           stroke={color}
           strokeWidth={strokeWidth}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={circumference}
           initial={{ strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: offset }}
@@ -79,17 +75,14 @@ export function ProgressRing({
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {label !== undefined && (
             <div
-              className="font-bold leading-none"
-              style={{
-                fontSize: size < 60 ? 14 : size < 80 ? 18 : 22,
-                color: 'var(--text-primary)',
-              }}
+              className="k-figure leading-none"
+              style={{ fontSize: size < 60 ? 14 : size < 80 ? 18 : 22 }}
             >
               {label}
             </div>
           )}
           {sublabel && (
-            <div className="text-[9px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            <div className="k-label mt-1">
               {sublabel}
             </div>
           )}

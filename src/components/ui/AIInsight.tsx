@@ -1,8 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { Zap, GitBranch, HelpCircle, Activity, type LucideIcon } from 'lucide-react';
-
 type AIInsightVariant = 'insight' | 'recommendation' | 'why' | 'adapted';
 
 interface AIInsightProps {
@@ -13,38 +10,14 @@ interface AIInsightProps {
   className?: string;
 }
 
-const VARIANT_CONFIG: Record<
-  AIInsightVariant,
-  { icon: LucideIcon; label: string; color: string; bg: string; border: string }
-> = {
-  insight: {
-    icon: Zap,
-    label: 'NEXUS INSIGHT',
-    color: 'var(--accent-violet-bright)',
-    bg: 'rgba(124, 58, 237, 0.08)',
-    border: 'rgba(124, 58, 237, 0.2)',
-  },
-  recommendation: {
-    icon: Activity,
-    label: 'AI RECOMMENDATION',
-    color: 'var(--accent-violet-bright)',
-    bg: 'rgba(124, 58, 237, 0.08)',
-    border: 'rgba(124, 58, 237, 0.2)',
-  },
-  why: {
-    icon: HelpCircle,
-    label: 'WHY THIS',
-    color: 'var(--accent-cyan)',
-    bg: 'rgba(6, 182, 212, 0.06)',
-    border: 'rgba(6, 182, 212, 0.2)',
-  },
-  adapted: {
-    icon: GitBranch,
-    label: 'PATH ADAPTED',
-    color: 'var(--accent-green)',
-    bg: 'rgba(16, 185, 129, 0.06)',
-    border: 'rgba(16, 185, 129, 0.2)',
-  },
+/* The variant now only names the observation. The tinted panel, the machine
+   iconography and the pulsing dot are gone: an aside earns its place with a rule
+   and a label, and the reader does not need to be told a machine wrote it. */
+const VARIANT_LABEL: Record<AIInsightVariant, string> = {
+  insight: 'INSIGHT',
+  recommendation: 'RECOMMENDATION',
+  why: 'WHY THIS',
+  adapted: 'PATH ADAPTED',
 };
 
 export function AIInsight({
@@ -54,39 +27,18 @@ export function AIInsight({
   compact = false,
   className = '',
 }: AIInsightProps) {
-  const config = VARIANT_CONFIG[variant];
-  const Icon = config.icon;
-  const displayLabel = label ?? config.label;
+  const displayLabel = label ?? VARIANT_LABEL[variant];
 
   return (
     <div
-      className={`rounded-xl ${compact ? 'p-2.5' : 'p-3.5'} ${className}`}
-      style={{
-        background: config.bg,
-        border: `1px solid ${config.border}`,
-      }}
+      className={`${compact ? 'pl-3' : 'pl-4'} ${className}`}
+      style={{ borderLeft: '2px solid var(--k-edge)' }}
     >
-      {/* Header row */}
-      <div className="flex items-center gap-1.5 mb-2">
-        {/* Animated dot indicator */}
-        <motion.div
-          className="w-1 h-1 rounded-full flex-shrink-0"
-          style={{ background: config.color }}
-          animate={{ opacity: [0.4, 1, 0.4] }}
-          transition={{ duration: 2.5, repeat: Infinity }}
-          aria-hidden="true"
-        />
-        <Icon size={10} style={{ color: config.color, flexShrink: 0 }} aria-hidden="true" />
-        <span
-          className="text-[9px] font-bold tracking-widest uppercase"
-          style={{ color: config.color }}
-        >
-          {displayLabel}
-        </span>
+      <div className="k-label mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+        {displayLabel}
       </div>
 
-      {/* Content */}
-      <div className={compact ? 'text-[11px]' : 'text-[12px]'} style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+      <div className={compact ? 'text-[11px]' : 'text-xs'} style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
         {children}
       </div>
     </div>

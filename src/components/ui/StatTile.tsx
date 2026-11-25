@@ -13,32 +13,38 @@ interface StatTileProps {
   delay?: number;
 }
 
-export function StatTile({ label, value, subvalue, icon: Icon, iconColor = 'var(--accent-violet-bright)', trend, delay = 0 }: StatTileProps) {
+/* `iconColor` stays in the props for call-site compatibility but no longer paints:
+   the icon is a single amber block (.k-tile), so a per-tile hue would break the
+   one-accent rule and reintroduce the alpha-hex tinting this cell was built from. */
+export function StatTile({ label, value, subvalue, icon: Icon, trend, delay = 0 }: StatTileProps) {
   return (
     <motion.div
-      className="p-4 rounded-xl"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)' }}
+      className="p-4"
+      style={{
+        background: 'var(--bg-surface)',
+        border: '2px solid var(--k-edge)',
+        boxShadow: 'var(--k-shadow-sm)',
+      }}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay }}
-      whileHover={{ borderColor: 'var(--border-default)', y: -1, transition: { duration: 0.2 } }}
+      whileHover={{ y: -2, transition: { duration: 0.2 } }}
     >
       <div className="flex items-start justify-between mb-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ background: `${iconColor}20`, border: `1px solid ${iconColor}30` }}>
-          <Icon size={15} style={{ color: iconColor }} />
-        </div>
+        <span className="k-tile" style={{ width: '2rem', height: '2rem' }}>
+          <Icon size={15} aria-hidden="true" />
+        </span>
         {trend && (
-          <div className="flex items-center gap-1 text-[10px]"
+          <div className="flex items-center gap-1 text-[11px]"
             style={{ color: trend.direction === 'up' ? 'var(--accent-green)' : trend.direction === 'down' ? 'var(--accent-rose)' : 'var(--text-muted)' }}>
-            <span>{trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→'}</span>
+            <span aria-hidden="true">{trend.direction === 'up' ? '↑' : trend.direction === 'down' ? '↓' : '→'}</span>
             <span>{trend.label}</span>
           </div>
         )}
       </div>
-      <div className="text-2xl font-bold mb-0.5" style={{ color: 'var(--text-primary)' }}>{value}</div>
-      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{label}</div>
-      {subvalue && <div className="text-[10px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>{subvalue}</div>}
+      <div className="k-figure text-2xl mb-1">{value}</div>
+      <div className="k-label">{label}</div>
+      {subvalue && <div className="text-[11px] mt-1" style={{ color: 'var(--text-secondary)' }}>{subvalue}</div>}
     </motion.div>
   );
 }

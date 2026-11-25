@@ -15,11 +15,13 @@ export function WhyThis({ reason, compact = false }: WhyThisProps) {
   return (
     <div className="relative inline-flex">
       <button
-        className="flex items-center gap-1 text-[10px] transition-colors hover:opacity-80"
-        style={{ color: 'var(--accent-violet-bright)' }}
+        type="button"
+        className="flex items-center gap-1.5 text-[11px] font-medium transition-colors hover:opacity-80"
+        style={{ color: 'var(--text-secondary)' }}
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
       >
-        <Info size={11} />
+        <Info size={11} aria-hidden="true" />
         {!compact && <span>Why this?</span>}
       </button>
 
@@ -28,11 +30,11 @@ export function WhyThis({ reason, compact = false }: WhyThisProps) {
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
             <motion.div
-              className="absolute bottom-6 left-0 w-64 p-3 rounded-xl z-50"
+              className="absolute bottom-6 left-0 w-64 p-3 z-50"
               style={{
-                background: 'var(--bg-overlay)',
-                border: '1px solid var(--border-default)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 16px var(--accent-violet-glow)',
+                background: 'var(--bg-surface)',
+                border: '2px solid var(--k-edge)',
+                boxShadow: 'var(--k-shadow)',
               }}
               initial={{ opacity: 0, y: 4, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -40,12 +42,8 @@ export function WhyThis({ reason, compact = false }: WhyThisProps) {
               transition={{ duration: 0.15 }}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-violet-bright)' }} />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider"
-                    style={{ color: 'var(--accent-violet-bright)' }}>AI Recommendation Reason</span>
-                </div>
-                <button onClick={() => setOpen(false)}>
+                <span className="k-label" style={{ color: 'var(--text-secondary)' }}>Why this</span>
+                <button type="button" onClick={() => setOpen(false)} aria-label="Close">
                   <X size={11} style={{ color: 'var(--text-muted)' }} />
                 </button>
               </div>

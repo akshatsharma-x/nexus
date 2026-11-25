@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { skillLevelColor, skillLevelLabel } from '@/lib/utils';
+import { skillLevelLabel } from '@/lib/utils';
 import type { SkillLevel } from '@/lib/types';
 
 interface SkillBarProps {
@@ -14,30 +14,34 @@ interface SkillBarProps {
 }
 
 export function SkillBar({ name, level, score, showLabel = true, compact = false, delay = 0 }: SkillBarProps) {
-  const color = skillLevelColor(level);
+  /* The ramp is read from the variable rather than skillLevelColor() because
+     .k-paper re-cuts every --skill-* step for cream; the literal hex is tuned for
+     the dark room only and drops to ~2:1 on stock. */
+  const color = `var(--skill-${level})`;
 
   return (
-    <div className={compact ? 'space-y-1' : 'space-y-1.5'}>
+    <div className={compact ? 'space-y-1.5' : 'space-y-2'}>
       {showLabel && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{name}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-              style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>{name}</span>
+          <div className="flex items-center gap-2 flex-none">
+            <span className="k-badge k-badge-quiet"
+              style={{ color, borderColor: 'currentColor', padding: '0.0625rem 0.3125rem', letterSpacing: '0.08em' }}>
               {skillLevelLabel(level)}
             </span>
-            <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{score}%</span>
+            <span className="k-figure text-[11px]" style={{ color: 'var(--text-muted)' }}>{score}%</span>
           </div>
         </div>
       )}
-      <div className="relative h-1.5 rounded-full overflow-hidden"
-        style={{ background: 'var(--bg-overlay)' }}>
+      <div className="k-meter" style={{ height: compact ? 6 : 8 }}>
         <motion.div
-          className="absolute top-0 left-0 h-full rounded-full"
-          style={{ background: `linear-gradient(90deg, ${color}99 0%, ${color} 100%)` }}
+          className="k-meter-fill"
+          /* The class carries a CSS width transition, which would fight the
+             per-frame width Framer writes here. */
+          style={{ background: color, transition: 'none' }}
           initial={{ width: 0 }}
           animate={{ width: `${score}%` }}
-          transition={{ duration: 0.8, delay, ease: [0.34, 1.56, 0.64, 1] }}
+          transition={{ duration: 0.8, delay, ease: 'easeOut' }}
         />
       </div>
     </div>
