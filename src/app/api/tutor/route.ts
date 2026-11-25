@@ -111,17 +111,39 @@ Always reference this context when giving advice.`;
     const depth = (settings?.contextDepth && CONTEXT_DEPTH_SIZES[settings.contextDepth])
       || DEFAULT_CONTEXT_DEPTH;
 
+    // The Messages API rejects a conversation whose first turn is the
+    // assistant's (and these models reject a trailing assistant turn as
+    // prefill), so the window has to open and close on the learner. Slicing
+    // to the context depth can land on an assistant reply, so trim forward to
+    // the first user turn rather than send a request that can only 400.
+    const recent = turns.slice(-depth);
+    const start = recent.findIndex(t => t.role === 'user');
+    const conversation = start === -1 ? [] : recent.slice(start);
+    if (conversation.length === 0 || conversation[conversation.length - 1].role !== 'user') {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
+
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({
       model,
-      max_tokens: 1024,
+      // Opus 5 and Sonnet 5 think adaptively by default, and thinking draws
+      // on this same budget — at 1024 a considered answer could be cut off
+      // mid-sentence. This is a ceiling, not a target: the prompt asks for
+      // concise replies, and only generated tokens are billed.
+      max_tokens: 16000,
       system: buildSystemPrompt(settings, contextBlock),
-      messages: turns.slice(-depth),
+      messages: conversation,
     });
 
-    const first = response.content[0];
-    const content = first && first.type === 'text' ? first.text : '';
+    // With thinking on, the reply opens with a thinking block (its text empty
+    // by default), so reading only content[0] found nothing and every answer
+    // fell back to the local reply. Join the text blocks instead.
+    const content = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map(block => block.text)
+      .join('\n\n')
+      .trim();
 
     // Nothing usable came back — let the client fall back rather than
     // rendering an empty assistant bubble.
