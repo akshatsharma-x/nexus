@@ -369,7 +369,7 @@ function ProjectCard({
 export default function ProjectsPage() {
   const [filter, setFilter] = useState<'all' | 'in_progress' | 'not_started' | 'completed'>('all');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const { getStatus, projectState, loaded } = useProjectProgress();
+  const { getStatus, loaded } = useProjectProgress();
 
   const openProject = useCallback((project: Project) => {
     setSelectedProject(project);

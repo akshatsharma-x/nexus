@@ -107,7 +107,7 @@ const INTERVENTION_MESSAGES: Record<LearningInterventionRequest['triggerType'], 
 };
 
 export const AIIntelligenceService: IAIIntelligenceService = {
-  async interpretGoal(req: GoalInterpretationRequest): Promise<GoalInterpretationResult> {
+  async interpretGoal(_req: GoalInterpretationRequest): Promise<GoalInterpretationResult> {
     return {
       interpretedGoal: {},
       clarifyingQuestions: [

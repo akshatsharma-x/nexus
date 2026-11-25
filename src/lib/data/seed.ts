@@ -1,7 +1,7 @@
 import type {
   User, LearnerProfile, Skill, SkillMastery, Goal, LearningResource,
-  Course, Project, Assessment, LearningPath, PathNode, Progress,
-  Recommendation, WeeklyActivity, Milestone, Badge, VerifiedSkill,
+  Project, Assessment, LearningPath, Progress,
+  Recommendation, WeeklyActivity, Milestone, Badge,
   SkillPassport, CareerRole, SkillGap,
   LearningBehavior, LearnerContext
 } from '../types';

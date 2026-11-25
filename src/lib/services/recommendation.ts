@@ -17,7 +17,7 @@ import type {
   SkillLevel, LearningPath, PathNode, Skill, Project, Assessment,
 } from '../types';
 import {
-  SKILL_GAPS, RECOMMENDATIONS, ACTIVE_PATH, RESOURCES, ASSESSMENTS, ACTIVE_GOAL, SKILL_MASTERIES,
+  SKILL_GAPS, RECOMMENDATIONS, ACTIVE_PATH, ACTIVE_GOAL, SKILL_MASTERIES,
   DEMO_LEARNER_CONTEXT,
 } from '../data/seed';
 import { GapAnalysisService } from './gap-analysis';
