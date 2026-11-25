@@ -3,8 +3,10 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Search, X } from 'lucide-react';
-import { SKILLS } from '@/lib/data/seed';
+import { ACTIVE_GOAL, DEMO_LEARNER_CONTEXT, SKILLS } from '@/lib/data/seed';
 import { useMastery } from '@/lib/context/MasteryContext';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import { MasteryService } from '@/lib/services/mastery';
 import { SkillBar } from '@/components/ui/SkillBar';
 import { SkillNode } from '@/components/ui/SkillNode';
 import { LearningSphere } from '@/components/visualization/LearningSphere';
@@ -194,12 +196,20 @@ export default function SkillsPage() {
     [masteries]
   );
 
-  // Readiness = avg score of skills with any mastery
-  const readiness = useMemo(() => {
-    const relevant = masteries.filter(m => m.score > 0);
-    if (!relevant.length) return 0;
-    return Math.round(relevant.reduce((acc, m) => acc + m.score, 0) / relevant.length);
-  }, [masteries]);
+  // Readiness from the shared service — the figure Career and the tutor
+  // report. This header used to average mastery across tracked skills and
+  // call that "readiness", so it read 53% beside a Career page saying 24%.
+  // The average is still reported, under its own name, by the library below.
+  const readiness = useMemo(
+    () => MasteryService.computeOverallReadiness(masteries, ACTIVE_GOAL),
+    [masteries],
+  );
+
+  // The headline is the learner's role, read the way Home and the rail read
+  // it; it was a hardcoded "ML Engineer" for every learner.
+  const { learnerContext } = useOnboarding();
+  const liveContext = learnerContext ?? DEMO_LEARNER_CONTEXT;
+  const targetRole = liveContext.profile.targetRole || liveContext.goal.title;
 
   const filteredSkills = useMemo(() => {
     return SKILLS.filter(s => {
@@ -233,7 +243,7 @@ export default function SkillsPage() {
       {/* ── Page header — sits directly on the dark room ───────────────────── */}
       <header className="mb-6">
         <div className="k-slug mb-3">Knowledge Map</div>
-        <h1 className="k-display mb-5">ML Engineer</h1>
+        <h1 className="k-display mb-5">{targetRole}</h1>
         <div className="flex items-center gap-4" style={{ maxWidth: 340 }}>
           <span className="k-label flex-none">Current readiness</span>
           <ReadinessBar percent={readiness} />
