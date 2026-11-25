@@ -57,6 +57,8 @@ interface TooltipState {
   skill: SphereSkill;
   x: number;
   y: number;
+  /** Container width when the pointer moved, for keeping the tooltip inside. */
+  frameWidth: number;
 }
 
 // ─── LearningSphere ───────────────────────────────────────────────────────────
@@ -83,7 +85,9 @@ export function LearningSphere({
     screenY: number,
   ) => {
     if (skill) {
-      setTooltip({ skill, x: screenX, y: screenY });
+      // Measured here, in the event, rather than read off the ref during
+      // render, where it is not reactive and the compiler rejects it.
+      setTooltip({ skill, x: screenX, y: screenY, frameWidth: containerRef.current?.offsetWidth ?? 400 });
     } else {
       setTooltip(null);
     }
@@ -185,7 +189,7 @@ export function LearningSphere({
           className="k-panel"
           style={{
             position: 'absolute',
-            left: Math.min(tooltip.x + 14, (containerRef.current?.offsetWidth ?? 400) - 130),
+            left: Math.min(tooltip.x + 14, tooltip.frameWidth - 130),
             top: Math.max(tooltip.y - 36, 8),
             pointerEvents: 'none',
             zIndex: 20,

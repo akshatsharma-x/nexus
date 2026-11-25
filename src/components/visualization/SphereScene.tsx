@@ -321,6 +321,16 @@ function SkillNodeMesh({
     registerMesh(skill.id, mesh);
   }, [skill.id, registerMesh]);
 
+  // Emissive is animated imperatively, as R3F intends, but through the object
+  // each callback is handed — the frame loop's mesh, the pointer event's
+  // eventObject — rather than the memoized material, which the React Compiler
+  // treats as a render value it may not mutate. It is the same material: the
+  // mesh renders with `material` below.
+  const setEmissive = (object: THREE.Object3D, value: number) => {
+    const mat = (object as THREE.Mesh).material;
+    if (mat instanceof THREE.MeshStandardMaterial) mat.emissiveIntensity = value;
+  };
+
   useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
@@ -344,22 +354,22 @@ function SkillNodeMesh({
       // use mesh userData to accumulate time
       mesh.userData.t = (mesh.userData.t ?? 0) + 0.016;
       const pulse = 0.14 + Math.sin(mesh.userData.t * 2.2) * 0.07;
-      material.emissiveIntensity = pulse;
+      setEmissive(mesh, pulse);
     }
   });
 
   const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     document.body.style.cursor = 'pointer';
-    material.emissiveIntensity = 0.28;
+    setEmissive(e.eventObject, 0.28);
     onPointerEnter(skill, e);
-  }, [skill, onPointerEnter, material]);
+  }, [skill, onPointerEnter]);
 
-  const handlePointerOut = useCallback(() => {
+  const handlePointerOut = useCallback((e: ThreeEvent<PointerEvent>) => {
     document.body.style.cursor = 'auto';
-    material.emissiveIntensity = skill.isRecommended ? 0.16 : 0.1;
+    setEmissive(e.eventObject, skill.isRecommended ? 0.16 : 0.1);
     onPointerLeave();
-  }, [skill.isRecommended, onPointerLeave, material]);
+  }, [skill.isRecommended, onPointerLeave]);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
