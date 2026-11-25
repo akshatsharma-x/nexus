@@ -42,13 +42,18 @@ export function Tabs({ tabs, active, onChange, variant = 'pill', size = 'sm', cl
   const typeClass = 'font-bold uppercase tracking-[0.1em]';
 
   if (variant === 'underline') {
+    // The row scrolls rather than overflowing the page: four tabs ran 53px
+    // past a 390px screen. The rule sits on the inner row, which is at least
+    // full width, because a scroll container clips at its padding box and the
+    // active underline overlaps the rule by 2px.
     return (
-      <div className={`flex gap-1 ${className}`} style={{ borderBottom: '2px solid var(--k-edge)' }}>
+      <div className={`overflow-x-auto ${className}`}>
+        <div className="flex gap-1 w-max min-w-full" role="tablist" style={{ borderBottom: '2px solid var(--k-edge)' }}>
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onChange(tab.id)}
-            className={`relative ${padding} ${textSize} ${typeClass} transition-colors`}
+            className={`relative flex-shrink-0 whitespace-nowrap ${padding} ${textSize} ${typeClass} transition-colors`}
             style={{
               fontFamily: 'var(--font-display)',
               color: active === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
@@ -70,19 +75,22 @@ export function Tabs({ tabs, active, onChange, variant = 'pill', size = 'sm', cl
             )}
           </button>
         ))}
+        </div>
       </div>
     );
   }
 
+  // pb-1 leaves room for the selected tab's 2px offset, which the scroll
+  // container would otherwise clip.
   return (
-    <div className={`flex gap-1.5 ${className}`} role="tablist">
+    <div className={`flex gap-1.5 overflow-x-auto pb-1 ${className}`} role="tablist">
       {tabs.map(tab => {
         const selected = active === tab.id;
         return (
           <button
             key={tab.id}
             onClick={() => onChange(tab.id)}
-            className={`relative ${padding} ${textSize} ${typeClass} transition-colors`}
+            className={`relative flex-shrink-0 whitespace-nowrap ${padding} ${textSize} ${typeClass} transition-colors`}
             style={{
               fontFamily: 'var(--font-display)',
               background: selected ? 'var(--amber)' : 'transparent',
