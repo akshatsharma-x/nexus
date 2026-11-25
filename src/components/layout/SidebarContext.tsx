@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useContext, useState, useEffect } from 'react';
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -40,16 +40,16 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     return () => mq.removeEventListener('change', handler);
   }, []);
 
+  // Stable identities: the drawer's keyboard effect depends on closeMobile,
+  // and a fresh function per render would re-run it — pulling focus out of
+  // the open drawer and back in on every unrelated update.
+  const toggle = useCallback(() => setCollapsed(c => !c), []);
+  const openMobile = useCallback(() => setMobileOpen(true), []);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+
   return (
     <SidebarContext.Provider
-      value={{
-        collapsed,
-        mobileOpen,
-        isMobile,
-        toggle: () => setCollapsed(c => !c),
-        openMobile: () => setMobileOpen(true),
-        closeMobile: () => setMobileOpen(false),
-      }}
+      value={{ collapsed, mobileOpen, isMobile, toggle, openMobile, closeMobile }}
     >
       {children}
     </SidebarContext.Provider>

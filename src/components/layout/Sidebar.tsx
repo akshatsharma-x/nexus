@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
@@ -53,7 +54,15 @@ function NavItem({
   const prefersReducedMotion = useReducedMotion();
 
   const inner = (
-    <Link href={item.href} onClick={onClick}>
+    // Name and current-page state belong to the link itself: on the inner div,
+    // aria-current was attached to a generic element, which is not what a
+    // screen reader announces as "current page" when it reaches the link.
+    <Link
+      href={item.href}
+      onClick={onClick}
+      aria-label={item.label}
+      aria-current={isActive ? 'page' : undefined}
+    >
       <motion.div
         className="relative flex items-center gap-2.5 px-3 py-2 cursor-pointer group/nav"
         style={{
@@ -74,8 +83,6 @@ function NavItem({
             : { background: 'var(--frame-hover)', color: 'var(--text-primary)' }
         }
         transition={{ duration: 0.15 }}
-        aria-label={item.label}
-        aria-current={isActive ? 'page' : undefined}
       >
         {isActive && (
           <motion.span
@@ -148,6 +155,30 @@ export function Sidebar() {
 
   const isExpanded = isMobile ? mobileOpen : !collapsed;
   const sidebarWidth = isExpanded ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED;
+  const asideRef = useRef<HTMLElement>(null);
+  const drawerOpen = isMobile && mobileOpen;
+
+  // The mobile drawer is modal in effect — it covers the page behind a scrim —
+  // so it behaves like one from the keyboard: focus moves in to the current
+  // page's link when it opens, Escape closes it, and focus goes back to
+  // whatever opened it when it closes.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const aside = asideRef.current;
+    // preventScroll: the drawer is still off-screen when this runs, and
+    // focus() would otherwise scroll its overflow-hidden column mid-slide.
+    (aside?.querySelector<HTMLElement>('a[aria-current="page"]') ?? aside?.querySelector<HTMLElement>('a[href]'))
+      ?.focus({ preventScroll: true });
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMobile();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      opener?.focus();
+    };
+  }, [drawerOpen, closeMobile]);
 
   // Deliberately the same two lines the pages use — learner context if
   // onboarding has run, demo context before that, then role over goal title —
@@ -219,7 +250,13 @@ export function Sidebar() {
       </AnimatePresence>
 
       {/* Sidebar */}
+      {/* inert while the mobile drawer is closed: it slides off-screen but
+          would otherwise stay in the tab order and the accessibility tree,
+          so keyboard users tabbed through a column of invisible links. */}
       <motion.aside
+        ref={asideRef}
+        id="primary-navigation"
+        inert={isMobile && !mobileOpen}
         className="fixed left-0 top-0 h-screen flex flex-col z-40 overflow-hidden"
         animate={{
           width: sidebarWidth,
@@ -569,10 +606,12 @@ export function Sidebar() {
 
 // Exported for use in TopBar (hamburger button)
 export function MobileMenuButton() {
-  const { openMobile } = useSidebar();
+  const { openMobile, mobileOpen } = useSidebar();
   return (
     <button
       onClick={openMobile}
+      aria-expanded={mobileOpen}
+      aria-controls="primary-navigation"
       className="w-8 h-8 flex items-center justify-center"
       style={{
         background: 'var(--frame-well)',
