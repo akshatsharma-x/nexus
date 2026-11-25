@@ -18,6 +18,18 @@ type AiStatus = 'checking' | 'available' | 'fallback';
 /** The opening turn has no time: it is written for the session, not sent at a moment. */
 type Turn = Omit<AIMessage, 'timestamp'> & { timestamp?: Date };
 
+/**
+ * Stamps a turn at the moment it is sent. The clock read lives here, outside
+ * the component, because a turn is only ever created by an event — keeping it
+ * out of the component body keeps it out of anything a render could call.
+ * Ids only need to be unique within the session, so a counter does.
+ */
+let turnCount = 0;
+function stampTurn(turn: Omit<AIMessage, 'id' | 'timestamp'>): AIMessage {
+  turnCount += 1;
+  return { ...turn, id: `msg_${turnCount}_${turn.role}`, timestamp: new Date() };
+}
+
 const suggestedPrompts = (targetRole: string) => [
   'What should I focus on this week?',
   'Explain backpropagation in terms of React concepts',
@@ -258,12 +270,7 @@ What would you like to explore today?`,
   async function sendMessage(content: string) {
     if (!content.trim() || isLoading) return;
 
-    const userMsg: AIMessage = {
-      id: `msg_${Date.now()}_user`,
-      role: 'user',
-      content: content.trim(),
-      timestamp: new Date(),
-    };
+    const userMsg = stampTurn({ role: 'user', content: content.trim() });
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
@@ -289,25 +296,21 @@ What would you like to explore today?`,
       const data = await response.json();
       if (!data?.content) throw new Error('Empty response');
 
-      const assistantMsg: AIMessage = {
-        id: `msg_${Date.now()}_ai`,
+      const assistantMsg = stampTurn({
         role: 'assistant',
         content: data.content,
-        timestamp: new Date(),
         skillRefs: data.skillRefs,
         source: 'ai',
-      };
+      });
       setMessages(prev => [...prev, assistantMsg]);
       // A real reply is stronger evidence than the startup probe.
       setAiStatus('available');
     } catch {
-      const fallbackMsg: AIMessage = {
-        id: `msg_${Date.now()}_ai`,
+      const fallbackMsg = stampTurn({
         role: 'assistant',
         content: getFallbackResponse(content),
-        timestamp: new Date(),
         source: 'fallback',
-      };
+      });
       setMessages(prev => [...prev, fallbackMsg]);
       // The request failed, so whatever the probe said, we are in fallback.
       setAiStatus('fallback');
