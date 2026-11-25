@@ -4,6 +4,9 @@ import { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function ModalShell({
   label,
   onClose,
@@ -13,17 +16,47 @@ export function ModalShell({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // The latest onClose, for the key handler. Depending on onClose directly
+  // re-ran the focus effect whenever a parent passed a fresh function, which
+  // yanked focus back to the close button mid-interaction.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
+  // aria-modal promises the rest of the page is out of reach; nothing in the
+  // browser enforces that, so this does: focus moves in on open, Tab and
+  // Shift+Tab wrap inside the sheet instead of walking into the page behind
+  // it, Escape closes, and focus returns to whatever opened the sheet — it
+  // used to be dropped on <body>.
   useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeRef.current?.focus();
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
+      const root = dialogRef.current;
+      if (e.key !== 'Tab' || !root) return;
+      const items = [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(el => el.getClientRects().length > 0);
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const leaving = !root.contains(active) || (e.shiftKey ? active === first : active === last);
+      if (leaving) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
+      }
+    };
     document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+    return () => {
+      document.removeEventListener('keydown', handler);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label={label}
