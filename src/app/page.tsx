@@ -21,7 +21,7 @@ import { useSidebar } from '@/components/layout/SidebarContext';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LearningSphere } from '@/components/visualization/LearningSphere';
 import { buildSphereData } from '@/lib/visualization/sphereDataAdapter';
-import { formatXP, skillLevelColor, skillLevelLabel } from '@/lib/utils';
+import { formatXP, greetingName, skillLevelColor, skillLevelLabel } from '@/lib/utils';
 import type { LearnerContext, PathNode, PathNodeStatus, Skill } from '@/lib/types';
 import type { NodeMastery } from '@/lib/visualization/sphereTypes';
 
@@ -626,15 +626,9 @@ export default function HomePage() {
   const headlineTail = headlineWords[headlineWords.length - 1] ?? '';
   const headlineStem = headlineWords.slice(0, -1).join(' ');
 
-  // Onboarding stores the literal string "You" when the learner never gave a
-  // name, so that placeholder is dropped rather than greeted by it — "Good
-  // morning, You" is worse than no name at all. Only the first name is used:
-  // this is the one line on the page addressed to a person.
-  const firstName = useMemo(() => {
-    const full = liveContext.user.name.trim();
-    if (!full || full === 'You') return '';
-    return full.split(/\s+/)[0];
-  }, [liveContext]);
+  // The one line on the page addressed to a person; greetingName drops the
+  // "You" placeholder onboarding stores when no name was given.
+  const firstName = useMemo(() => greetingName(liveContext.user.name), [liveContext]);
 
   const greeting = greetingFor(now);
 

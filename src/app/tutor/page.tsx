@@ -3,21 +3,25 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { Send, Zap } from 'lucide-react';
-import { INITIAL_AI_MESSAGES, CURRENT_USER, ACTIVE_GOAL, LEARNER_PROFILE, SKILLS } from '@/lib/data/seed';
+import { ACTIVE_GOAL, DEMO_LEARNER_CONTEXT, LEARNER_PROFILE, SKILLS } from '@/lib/data/seed';
 import { useOnboarding } from '@/lib/context/OnboardingContext';
 import { useMastery } from '@/lib/context/MasteryContext';
 import { useStoredSettings } from '@/lib/hooks/useSettings';
 import { MasteryService } from '@/lib/services/mastery';
 import { GapAnalysisService } from '@/lib/services/gap-analysis';
+import { greetingName, skillLevelLabel } from '@/lib/utils';
 import type { AIMessage } from '@/lib/types';
 
 /** Runtime AI availability — never assumed, always probed. */
 type AiStatus = 'checking' | 'available' | 'fallback';
 
+/** The opening turn has no time: it is written for the session, not sent at a moment. */
+type Turn = Omit<AIMessage, 'timestamp'> & { timestamp?: Date };
+
 const suggestedPrompts = (targetRole: string) => [
   'What should I focus on this week?',
   'Explain backpropagation in terms of React concepts',
-  `How far am I from ${targetRole} job-ready?`,
+  `How far am I from being job-ready for the ${targetRole} role?`,
   'Create a 2-week sprint plan for me',
   'Why is linear algebra important for ML?',
   'Compare PyTorch vs TensorFlow for my goals',
@@ -28,7 +32,7 @@ const suggestedPrompts = (targetRole: string) => [
  * speaker is carried by a label and by the weight of the copy, so the two
  * voices stay distinguishable without a coloured container each.
  */
-function MessageTurn({ message }: { message: AIMessage }) {
+function MessageTurn({ message }: { message: Turn }) {
   const isUser = message.role === 'user';
 
   return (
@@ -46,9 +50,11 @@ function MessageTurn({ message }: { message: AIMessage }) {
         >
           {isUser ? 'You' : 'Nexus Tutor'}
         </span>
-        <span className="nx-numeric text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {message.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-        </span>
+        {message.timestamp && (
+          <span className="nx-numeric text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            {message.timestamp.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
 
       <div
@@ -123,14 +129,25 @@ function TypingIndicator() {
 }
 
 export default function TutorPage() {
-  const [messages, setMessages] = useState<AIMessage[]>(INITIAL_AI_MESSAGES);
+  // Only turns actually exchanged this session. The opening turn is derived
+  // below rather than stored here: a seeded message carried a timestamp from
+  // whenever its module loaded — build time on the server, page load on the
+  // client — so the two never rendered the same text and hydration failed on
+  // every visit. Keeping it out of this list also keeps it out of the history
+  // sent to the model, which must open on a user turn.
+  const [messages, setMessages] = useState<AIMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState<AiStatus>('checking');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const { onboardingProfile } = useOnboarding();
+  const { onboardingProfile, learnerContext } = useOnboarding();
+  // Same fallback order as the rail and the other pages: the onboarded learner
+  // when there is one, the demo persona before that.
+  const liveContext = learnerContext ?? DEMO_LEARNER_CONTEXT;
+  const firstName = greetingName(liveContext.user.name);
+  const streakDays = Number.isFinite(liveContext.user.streakDays) ? Math.max(0, liveContext.user.streakDays) : 0;
   const { masteries } = useMastery();
   const { settings } = useStoredSettings();
   const reduceMotion = useReducedMotion();
@@ -193,19 +210,50 @@ export default function TutorPage() {
       : settings.preferredFormats;
 
     return {
-      name: CURRENT_USER.name,
+      // The full name for the model, or an explicit "not provided" — an
+      // omitted field falls back to the demo persona's name server-side.
+      name: firstName ? liveContext.user.name : 'not provided',
       currentRole: onboardingProfile?.currentRole || LEARNER_PROFILE.currentRole,
-      targetRole: onboardingProfile?.targetRole || ACTIVE_GOAL.title,
+      // The role, not the goal title: TopBar's rule. "Become an ML Engineer"
+      // is a sentence, and every template here reads the field as a role.
+      targetRole: liveContext.profile.targetRole || liveContext.goal.title,
       goalProgress: readiness,
       strengths,
       weaknesses,
-      streakDays: CURRENT_USER.streakDays,
+      streakDays,
       style: settings.learningStyle,
       formats,
       weeklyHours,
       difficulty: settings.difficultyPreference,
     };
-  }, [onboardingProfile, topGaps, settings, readiness]);
+  }, [onboardingProfile, topGaps, settings, readiness, liveContext, firstName, streakDays]);
+
+  /**
+   * The opening turn, written from live state on every render rather than
+   * from seed copy — the seed's greeted every learner as the demo persona,
+   * by name, with a readiness figure that contradicted the panel beside it.
+   * Server and first client render both see the demo context (the learner
+   * loads in an effect), so this hydrates cleanly and then follows the
+   * learner once they load.
+   */
+  const opening = useMemo<Turn>(() => {
+    const gap = topGaps[0];
+    const greeting = firstName ? `Hi ${firstName}!` : 'Hi!';
+    const momentum = streakDays > 0 ? `, with a ${streakDays}-day streak` : '';
+    const next = gap
+      ? `Right now your most impactful next move is **closing the ${gap.skill.name} gap** (currently ${skillLevelLabel(gap.currentLevel)} → need ${skillLevelLabel(gap.requiredLevel)}).`
+      : 'You have no open skill gaps right now, so the next move is depth: a project that makes you combine what you already know.';
+    return {
+      id: 'msg_opening',
+      role: 'assistant',
+      content: `${greeting} I'm your NEXUS tutor, and I have your learning profile and current path in front of me.
+
+You're ${readiness}% of the way to ${userContext.targetRole} requirements${momentum}. ${next}
+
+What would you like to explore today?`,
+      skillRefs: gap ? [gap.skill.id] : undefined,
+    };
+  }, [topGaps, firstName, streakDays, readiness, userContext.targetRole]);
 
   async function sendMessage(content: string) {
     if (!content.trim() || isLoading) return;
@@ -279,7 +327,7 @@ export default function TutorPage() {
 
     if (q.includes('focus') || q.includes('week')) {
       return focus
-        ? `This week, your highest-leverage skill is **${focus}** — it's the widest gap between where you are and ${userContext.targetRole}.
+        ? `This week, your highest-leverage skill is **${focus}** — it's the widest gap between where you are and the ${userContext.targetRole} role.
 
 With ${userContext.weeklyHours} available, a workable split is:
 • Two longer sessions on ${focus} — that's where the compounding is
@@ -287,7 +335,7 @@ With ${userContext.weeklyHours} available, a workable split is:
 • One session reviewing what you already started, so it sticks
 
 Closing ${focus} is estimated at ~${topGaps[0].estimatedHoursToClose}h of focused work.`
-        : `You have no open skill gaps against ${userContext.targetRole} right now. The highest-leverage move is depth: pick a project that forces you to combine several skills at once, rather than adding another topic.`;
+        : `You have no open skill gaps against the ${userContext.targetRole} role right now. The highest-leverage move is depth: pick a project that forces you to combine several skills at once, rather than adding another topic.`;
     }
     if (q.includes('backprop') || q.includes('neural')) {
       return `Great question — thinking in React terms is actually a perfect bridge.
@@ -307,7 +355,7 @@ The key insight: once you see it as reverse-mode automatic differentiation, it's
     if (q.includes('job') || q.includes('ready') || q.includes('far')) {
       const gapLines = topGaps.length > 0
         ? topGaps
-            .map((g, i) => `${i + 1}. ${g.skill.name}: ${g.currentLevel} → ${g.requiredLevel} (est. ${g.estimatedHoursToClose}h)`)
+            .map((g, i) => `${i + 1}. ${g.skill.name}: ${skillLevelLabel(g.currentLevel)} → ${skillLevelLabel(g.requiredLevel)} (est. ${g.estimatedHoursToClose}h)`)
             .join('\n')
         : 'No open gaps recorded against your target role.';
       const remainingHours = topGaps.reduce((sum, g) => sum + g.estimatedHoursToClose, 0);
@@ -358,10 +406,10 @@ What would you like to dig into?`;
             {/* Two columns on phones so the panel doesn't crowd out the chat. */}
             <div className="grid grid-cols-2 md:grid-cols-1 gap-x-4 gap-y-2">
               {[
-                { label: 'Learner', value: CURRENT_USER.name },
+                { label: 'Learner', value: liveContext.user.name },
                 { label: 'Goal', value: userContext.targetRole },
                 { label: 'Readiness', value: `${readiness}%` },
-                { label: 'Streak', value: `${CURRENT_USER.streakDays} days` },
+                { label: 'Streak', value: `${streakDays} ${streakDays === 1 ? 'day' : 'days'}` },
                 { label: 'Style', value: settings.learningStyle },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between gap-2 text-[11px]">
@@ -457,6 +505,7 @@ What would you like to dig into?`;
 
           {/* Transcript */}
           <div className="flex-1 overflow-y-auto px-5 py-5 space-y-7">
+            <MessageTurn message={opening} />
             {messages.map(msg => (
               <MessageTurn key={msg.id} message={msg} />
             ))}

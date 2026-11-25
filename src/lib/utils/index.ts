@@ -47,6 +47,18 @@ export function scoreToSkillLevel(score: number): SkillLevel {
   return 'novice';
 }
 
+/**
+ * The name to address a learner by, or '' to address them without one.
+ * Onboarding stores the literal string "You" when the learner never gave a
+ * name, so that placeholder is dropped rather than greeted by it — "Good
+ * morning, You" is worse than no name at all. Only the first name is used.
+ */
+export function greetingName(fullName: string): string {
+  const full = fullName.trim();
+  if (!full || full === 'You') return '';
+  return full.split(/\s+/)[0];
+}
+
 export function skillLevelLabel(level: SkillLevel): string {
   const labels: Record<SkillLevel, string> = {
     novice: 'Novice', beginner: 'Beginner', intermediate: 'Intermediate',
