@@ -31,6 +31,7 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 1023px)');
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- matchMedia exists only in the browser; read after mount so the first client render matches the server
     setIsMobile(mq.matches);
     const handler = (e: MediaQueryListEvent) => {
       setIsMobile(e.matches);

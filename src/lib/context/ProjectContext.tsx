@@ -70,6 +70,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const stored = raw ? asProjectState(JSON.parse(raw)) : null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
       if (stored) setRecorded(stored);
     } catch { /* ignore */ }
     setLoaded(true);

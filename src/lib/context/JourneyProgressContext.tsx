@@ -77,6 +77,7 @@ export function JourneyProgressProvider({ children }: { children: ReactNode }) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const stored = raw ? asRecord<PathNodeStatus>(JSON.parse(raw)) : null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
       if (stored) setRecorded(stored);
     } catch { /* ignore */ }
     try {

@@ -21,6 +21,7 @@ export function useStoredSettings(): { settings: NexusSettings; loaded: boolean 
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
     setSettings(loadSettings());
     setLoaded(true);
 
@@ -70,6 +71,7 @@ export function useEditableSettings(): EditableSettings {
 
   useEffect(() => {
     const stored = loadSettings();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
     setSaved(stored);
     setDraft(stored);
     setLoaded(true);

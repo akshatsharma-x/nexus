@@ -53,6 +53,7 @@ export function AssessmentProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
       if (raw) setStoredResults(parseStoredResults(raw));
     } catch { /* ignore */ }
     setLoaded(true);

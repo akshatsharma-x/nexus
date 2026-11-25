@@ -305,6 +305,7 @@ export default function HomePage() {
   // Anything derived from the wall clock is computed once after hydration, never
   // during the first render — the server and the client would disagree.
   const [now, setNow] = useState<Date | null>(null);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- the clock is read once after hydration, never during a render the server also runs
   useEffect(() => { setNow(new Date()); }, []);
 
   // ── Live learner context ───────────────────────────────────────────────────

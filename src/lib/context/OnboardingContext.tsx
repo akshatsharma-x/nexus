@@ -79,6 +79,7 @@ export function OnboardingContextProvider({ children }: { children: ReactNode })
       const cs = localStorage.getItem(CONTEXT_KEY);
       const profile = ps ? asStoredObject<OnboardingProfile>(reviveDates(JSON.parse(ps))) : null;
       const context = cs ? asLearnerContext(reviveDates(JSON.parse(cs))) : null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
       if (profile) setOnboardingProfile(profile);
       if (context) setLearnerContext(context);
     } catch {
