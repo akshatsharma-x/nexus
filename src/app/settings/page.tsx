@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { User, Bell, Zap, Shield, Download, Trash2 } from 'lucide-react';
-import { CURRENT_USER, LEARNER_PROFILE } from '@/lib/data/seed';
+import { DEMO_LEARNER_CONTEXT, LEARNER_PROFILE } from '@/lib/data/seed';
 import { useOnboarding } from '@/lib/context/OnboardingContext';
 import { useEditableSettings } from '@/lib/hooks/useSettings';
 import {
@@ -105,8 +105,12 @@ function Select({ label, value, options, onChange }: {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { onboardingProfile } = useOnboarding();
+  const { onboardingProfile, learnerContext } = useOnboarding();
   const { draft, dirty, set, commit } = useEditableSettings();
+  // The same person the rail and the top bar name, by the same rule: this card
+  // used to show the demo persona's name and email to every learner.
+  const liveUser = (learnerContext ?? DEMO_LEARNER_CONTEXT).user;
+  const displayName = liveUser.name.trim() || 'Learner';
 
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
   const [confirmReset, setConfirmReset] = useState(false);
@@ -189,11 +193,14 @@ export default function SettingsPage() {
             <div
               className="k-panel-flat k-figure flex-shrink-0 w-12 h-12 flex items-center justify-center text-lg"
               style={{ background: 'var(--amber)', color: 'var(--ink)' }}>
-              {CURRENT_USER.name.charAt(0)}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{CURRENT_USER.name}</div>
-              <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>{CURRENT_USER.email}</div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{displayName}</div>
+              {/* Onboarding never asks for an email, so there is often none. */}
+              {liveUser.email && (
+                <div className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>{liveUser.email}</div>
+              )}
             </div>
             <button
               onClick={() => router.push('/onboarding')}
