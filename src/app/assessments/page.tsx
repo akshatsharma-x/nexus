@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import { Clock, Star, Target, ChevronRight, CheckCircle } from 'lucide-react';
 import { ASSESSMENTS, SKILLS } from '@/lib/data/seed';
 import { useAssessmentResults } from '@/lib/context/AssessmentContext';
-import { Badge } from '@/components/ui/Badge';
 import { Tabs } from '@/components/ui/Tabs';
 import { difficultyLabel } from '@/lib/utils';
 import type { StoredResult } from '@/lib/context/AssessmentContext';
@@ -39,75 +38,55 @@ function AssessmentCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.06 }}
       className="py-5"
-      style={{ borderBottom: '1px solid var(--border-subtle)' }}
+      style={{ borderTop: index === 0 ? undefined : '2px solid var(--border-strong)' }}
     >
       <div className="flex items-start gap-4">
         {/* Left: content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1.5">
-            <Badge
-              variant={
-                assessment.type === 'quiz'
-                  ? 'cyan'
-                  : assessment.type === 'project'
-                  ? 'green'
-                  : 'violet'
-              }
-              size="xs"
-            >
-              {assessment.type}
-            </Badge>
-            <span className="text-[10px] font-medium" style={{ color: diffColor }}>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="k-badge k-badge-quiet">{assessment.type}</span>
+            <span className="k-label" style={{ color: diffColor }}>
               {difficultyLabel(assessment.difficulty)}
             </span>
             {result?.passed && (
-              <CheckCircle size={11} style={{ color: 'var(--accent-green)' }} />
+              <CheckCircle size={12} style={{ color: 'var(--accent-green)' }} />
             )}
           </div>
 
-          <h3 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
-            {assessment.title}
-          </h3>
+          <h3 className="k-display-sm mb-2">{assessment.title}</h3>
           <p
-            className="text-xs mb-2.5 leading-relaxed"
+            className="text-xs mb-3 leading-relaxed"
             style={{ color: 'var(--text-secondary)', maxWidth: 520 }}
           >
             {assessment.description}
           </p>
 
-          <div className="flex flex-wrap gap-1.5 mb-2.5">
+          <div className="flex flex-wrap gap-1.5 mb-3">
             {skillNames.map(name => (
-              <span
-                key={name}
-                className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(124,58,237,0.08)', color: 'var(--accent-violet-bright)' }}
-              >
+              <span key={name} className="k-badge k-badge-quiet">
                 {name}
               </span>
             ))}
           </div>
 
-          <div
-            className="flex items-center gap-4 text-[10px]"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <span className="flex items-center gap-1">
-              <Clock size={9} /> {assessment.estimatedMinutes}m
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <span className="k-label flex items-center gap-1.5">
+              <Clock size={11} /> {assessment.estimatedMinutes}m
             </span>
             <span
-              className="flex items-center gap-1"
+              className="k-label flex items-center gap-1.5"
               style={{ color: 'var(--accent-amber)' }}
             >
-              <Star size={9} /> +{assessment.xpReward} XP
+              <Star size={11} /> +{assessment.xpReward} XP
             </span>
-            <span className="flex items-center gap-1">
-              <Target size={9} /> Pass: {assessment.passingScore}%
+            <span className="k-label flex items-center gap-1.5">
+              <Target size={11} /> Pass: {assessment.passingScore}%
             </span>
-            <span>5 questions</span>
+            <span className="k-label">5 questions</span>
           </div>
 
           {result && (
-            <div className="mt-2 text-[10px]" style={{ color: 'var(--text-muted)' }}>
+            <div className="mt-2.5 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
               {result.timeTakenMinutes}m ·{' '}
               <span
                 style={{
@@ -122,52 +101,40 @@ function AssessmentCard({
         </div>
 
         {/* Right: CTA */}
-        <div className="flex-shrink-0 flex flex-col items-end gap-2">
+        <div className="flex-shrink-0 flex flex-col items-end gap-2.5">
           {result ? (
             <>
               <div
-                className="text-xl font-bold"
+                className="k-figure text-2xl"
                 style={{ color: result.passed ? 'var(--accent-green)' : 'var(--accent-rose)' }}
               >
                 {result.score}%
               </div>
               <div className="flex gap-1.5">
-                <motion.a
+                <a
                   href={`/assessments/${assessment.id}`}
-                  className="text-[10px] px-2.5 py-1 rounded-lg"
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    color: 'var(--text-secondary)',
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                  whileHover={{ scale: 1.04 }}
+                  className="k-btn k-btn-outline"
+                  style={{ padding: '0.375rem 0.625rem', fontSize: 11, boxShadow: 'none' }}
                 >
                   Review
-                </motion.a>
-                <motion.a
+                </a>
+                <a
                   href={`/assessments/${assessment.id}`}
-                  className="text-[10px] px-2.5 py-1 rounded-lg"
-                  style={{
-                    background: 'var(--bg-elevated)',
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border-subtle)',
-                  }}
-                  whileHover={{ scale: 1.04 }}
+                  className="k-btn k-btn-outline"
+                  style={{ padding: '0.375rem 0.625rem', fontSize: 11, boxShadow: 'none' }}
                 >
                   Retake
-                </motion.a>
+                </a>
               </div>
             </>
           ) : (
-            <motion.a
+            <a
               href={`/assessments/${assessment.id}`}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium"
-              style={{ background: 'var(--accent-violet)', color: 'white' }}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
+              className="k-btn k-btn-solid"
+              style={{ padding: '0.5rem 0.875rem' }}
             >
-              Start <ChevronRight size={11} />
-            </motion.a>
+              Start <ChevronRight size={12} />
+            </a>
           )}
         </div>
       </div>
@@ -201,83 +168,65 @@ export default function AssessmentsPage() {
   return (
     <div className="max-w-3xl">
 
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="mb-8">
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Assessments
-        </div>
-        <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-          Verify what you know.
-        </h1>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+      {/* ── Header — sits directly on the dark room ───────────────────────── */}
+      <header className="mb-6">
+        <div className="k-slug mb-3">Assessments</div>
+        <h1 className="k-display mb-4">Verify what you know.</h1>
+        <p className="nx-support" style={{ maxWidth: 560 }}>
           Assessments turn estimated skill levels into verified evidence.
           Each one you pass strengthens your learning path and your Skill Passport.
         </p>
-        <div className="flex gap-6 mt-4 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          <span>
-            <span className="font-semibold" style={{ color: 'var(--accent-green)' }}>
+        <div className="flex gap-8 mt-5">
+          <div>
+            <div className="k-figure text-2xl" style={{ color: 'var(--accent-green)' }}>
               {passedCount}
-            </span>{' '}
-            passed
-          </span>
+            </div>
+            <div className="k-label mt-1">Passed</div>
+          </div>
           {scores.length > 0 && (
-            <span>
-              <span className="font-semibold" style={{ color: 'var(--accent-cyan)' }}>
+            <div>
+              <div className="k-figure text-2xl" style={{ color: 'var(--accent-cyan)' }}>
                 {avgScore}%
-              </span>{' '}
-              avg score
-            </span>
+              </div>
+              <div className="k-label mt-1">Avg score</div>
+            </div>
           )}
-          <span>
-            <span
-              className="font-semibold"
-              style={{ color: 'var(--text-secondary)' }}
-            >
+          <div>
+            <div className="k-figure text-2xl">
               {ASSESSMENTS.length - attemptedIds.length}
-            </span>{' '}
-            available
-          </span>
+            </div>
+            <div className="k-label mt-1">Available</div>
+          </div>
         </div>
-      </div>
+      </header>
 
-      {/* ── Recommended next ─────────────────────────────────────────────── */}
+      {/* ── Recommended next — the one primary object on this view ────────── */}
       {recommendedNext && (
         <motion.div
-          className="mb-6 p-4 rounded-xl"
-          style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.2)' }}
+          className="k-paper k-panel-hero p-5 mb-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
         >
-          <div
-            className="text-[10px] font-bold tracking-[0.14em] uppercase mb-2"
-            style={{ color: 'var(--accent-violet-bright)' }}
-          >
-            Recommended next
-          </div>
-          <div className="flex items-center justify-between gap-4">
-            <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <div className="k-slug mb-2">Recommended next</div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: 420 }}>
               Take the{' '}
               <strong style={{ color: 'var(--text-primary)' }}>{recommendedNext.title}</strong> —
               passing calibrates your mastery and strengthens your Skill Passport.
             </p>
-            <motion.a
+            <a
               href={`/assessments/${recommendedNext.id}`}
-              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium"
-              style={{ background: 'var(--accent-violet)', color: 'white' }}
-              whileHover={{ scale: 1.04 }}
+              className="k-btn k-btn-solid flex-shrink-0"
             >
               Start now
-            </motion.a>
+            </a>
           </div>
         </motion.div>
       )}
 
       {/* ── Tabs ─────────────────────────────────────────────────────────── */}
-      <div className="mb-2">
+      <div className="mb-5">
         <Tabs
           tabs={[
             { id: 'all', label: 'All', badge: ASSESSMENTS.length },
@@ -294,11 +243,11 @@ export default function AssessmentsPage() {
       </div>
 
       {/* ── Assessment list ───────────────────────────────────────────────── */}
-      <div>
+      <div className="k-paper k-panel px-5 py-1">
         {loaded && visibleAssessments.length === 0 && (
           <p
             className="py-8 text-sm text-center"
-            style={{ color: 'var(--text-muted)' }}
+            style={{ color: 'var(--text-tertiary)' }}
           >
             {activeTab === 'completed'
               ? 'No completed assessments yet.'

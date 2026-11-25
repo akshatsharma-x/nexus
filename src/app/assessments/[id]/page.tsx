@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { use, useState, useEffect } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, ArrowRight, AlertCircle, Clock, Target,
 } from 'lucide-react';
@@ -77,6 +77,7 @@ export default function AssessmentPage({
   const { applyResult } = useMastery();
   const { loaded, storedResults, saveResult } = useAssessmentResults();
   const { nodeStatuses, completeNode } = useJourneyProgress();
+  const reducedMotion = useReducedMotion() ?? false;
 
   const [view, setView] = useState<PageView>('loading');
   const [session, setSession] = useState<AssessmentSession | null>(null);
@@ -104,21 +105,16 @@ export default function AssessmentPage({
   if (!assessment) {
     return (
       <div className="max-w-2xl">
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Assessment
+        <div className="k-slug mb-3">Assessment</div>
+        <h1 className="k-display-sm mb-5">Assessment not found</h1>
+        <div className="k-paper k-panel p-5">
+          <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+            No assessment with ID &ldquo;{assessmentId}&rdquo; exists.
+          </p>
+          <a href="/assessments" className="k-btn k-btn-solid">
+            <ChevronLeft size={14} /> Back to Assessments
+          </a>
         </div>
-        <h1 className="text-xl font-bold mb-3" style={{ color: 'var(--text-primary)' }}>
-          Assessment not found
-        </h1>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-          No assessment with ID &ldquo;{assessmentId}&rdquo; exists.
-        </p>
-        <a href="/assessments" className="text-sm" style={{ color: 'var(--accent-violet-bright)' }}>
-          ← Back to Assessments
-        </a>
       </div>
     );
   }
@@ -145,115 +141,93 @@ export default function AssessmentPage({
       setView('active');
     };
 
+    const previous = storedResults[assessmentId];
+
     return (
       <div className="max-w-2xl">
         <a
           href="/assessments"
-          className="flex items-center gap-1 text-xs mb-8"
-          style={{ color: 'var(--text-muted)' }}
+          className="k-label inline-flex items-center gap-1.5 mb-8"
+          style={{ color: 'var(--text-secondary)' }}
         >
           <ChevronLeft size={12} /> Assessments
         </a>
 
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Assessment
-        </div>
-
-        <h1
-          className="text-2xl font-bold mb-3"
-          style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}
-        >
-          {assessment.title}
-        </h1>
-
-        <p
-          className="text-sm mb-6"
-          style={{ color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: 520 }}
-        >
-          {assessment.description}
-        </p>
-
-        <div
-          className="grid grid-cols-2 gap-x-8 gap-y-3 text-xs mb-6"
-          style={{
-            borderTop: '1px solid var(--border-subtle)',
-            paddingTop: 20,
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <Clock size={12} style={{ color: 'var(--text-muted)' }} />
-            <span>{assessment.estimatedMinutes} minutes</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Target size={12} style={{ color: 'var(--text-muted)' }} />
-            <span>5 questions</span>
-          </div>
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>Pass score: </span>
-            {assessment.passingScore}%
-          </div>
-          <div>
-            <span style={{ color: 'var(--text-muted)' }}>Difficulty: </span>
-            {difficultyLabel(assessment.difficulty)}
-          </div>
-        </div>
-
-        <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 20, marginBottom: 28 }}>
-          <div
-            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Skills assessed
-          </div>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            {skillNames.join('  ·  ')}
+        {/* Header — on the dark room */}
+        <header className="mb-6">
+          <div className="k-slug mb-3">Assessment</div>
+          <h1 className="k-display-sm mb-4">{assessment.title}</h1>
+          <p className="nx-support" style={{ maxWidth: 520 }}>
+            {assessment.description}
           </p>
-        </div>
+        </header>
 
-        {storedResults[assessmentId] && (
-          <div
-            className="text-xs mb-5 flex items-center gap-2"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <span>Previous result: </span>
-            <span
-              style={{
-                color: storedResults[assessmentId].result.passed
-                  ? 'var(--accent-green)'
-                  : 'var(--accent-amber)',
-                fontWeight: 600,
-              }}
-            >
-              {storedResults[assessmentId].result.score}%{' '}
-              {storedResults[assessmentId].result.passed ? '✓ Passed' : '✗ Not passed'}
-            </span>
-            <button
-              onClick={() => setView('results')}
-              className="underline"
-              style={{ color: 'var(--accent-violet-bright)' }}
-            >
-              Review
-            </button>
+        {/* The brief — the one primary object on this view */}
+        <div className="k-paper k-panel-hero p-6">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="k-well p-3">
+              <div className="k-label mb-1.5 flex items-center gap-1.5">
+                <Clock size={11} /> Duration
+              </div>
+              <div className="k-figure text-[15px]">{assessment.estimatedMinutes} minutes</div>
+            </div>
+            <div className="k-well p-3">
+              <div className="k-label mb-1.5 flex items-center gap-1.5">
+                <Target size={11} /> Questions
+              </div>
+              <div className="k-figure text-[15px]">5</div>
+            </div>
+            <div className="k-well p-3">
+              <div className="k-label mb-1.5">Pass score</div>
+              <div className="k-figure text-[15px]">{assessment.passingScore}%</div>
+            </div>
+            <div className="k-well p-3">
+              <div className="k-label mb-1.5">Difficulty</div>
+              <div className="k-figure text-[15px]">{difficultyLabel(assessment.difficulty)}</div>
+            </div>
           </div>
-        )}
 
-        <div className="flex items-center gap-4">
-          <motion.button
-            onClick={handleBegin}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium"
-            style={{ background: 'var(--accent-violet)', color: 'white' }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            Begin Assessment <ArrowRight size={14} />
-          </motion.button>
-          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            +{assessment.xpReward} XP on passing
-          </span>
+          <hr className="k-rule-hard my-5" />
+
+          <div className="k-label mb-2.5">Skills assessed</div>
+          <div className="flex flex-wrap gap-1.5">
+            {skillNames.map(name => (
+              <span key={name} className="k-badge k-badge-quiet">{name}</span>
+            ))}
+          </div>
+
+          {previous && (
+            <>
+              <hr className="k-rule-thin my-5" />
+              <div className="flex flex-wrap items-center gap-2 text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                <span className="k-label">Previous result</span>
+                <span
+                  style={{
+                    color: previous.result.passed ? 'var(--accent-green)' : 'var(--accent-amber)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {previous.result.score}% {previous.result.passed ? '✓ Passed' : '✗ Not passed'}
+                </span>
+                <button
+                  onClick={() => setView('results')}
+                  className="underline"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  Review
+                </button>
+              </div>
+            </>
+          )}
+
+          <hr className="k-rule-hard my-5" />
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button onClick={handleBegin} className="k-btn k-btn-solid">
+              Begin Assessment <ArrowRight size={14} />
+            </button>
+            <span className="k-label">+{assessment.xpReward} XP on passing</span>
+          </div>
         </div>
       </div>
     );
@@ -271,16 +245,14 @@ export default function AssessmentPage({
     if (!question) {
       return (
         <div className="max-w-2xl">
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            No questions available for this assessment.
-          </p>
-          <button
-            onClick={() => setView('intro')}
-            className="text-xs mt-4"
-            style={{ color: 'var(--accent-violet-bright)' }}
-          >
-            ← Back
-          </button>
+          <div className="k-paper k-panel p-5">
+            <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+              No questions available for this assessment.
+            </p>
+            <button onClick={() => setView('intro')} className="k-btn k-btn-solid">
+              <ChevronLeft size={14} /> Back
+            </button>
+          </div>
         </div>
       );
     }
@@ -334,32 +306,28 @@ export default function AssessmentPage({
     return (
       <div className="max-w-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between gap-3 mb-5">
           <button
             onClick={() => setView('intro')}
-            className="flex items-center gap-1 text-xs"
-            style={{ color: 'var(--text-muted)' }}
+            className="k-label inline-flex items-center gap-1.5"
+            style={{ color: 'var(--text-secondary)' }}
           >
             <ChevronLeft size={12} /> Exit
           </button>
-          <span className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+          <span className="k-label truncate" style={{ color: 'var(--text-secondary)' }}>
             {assessment.title}
           </span>
-          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span className="k-figure text-[13px]">
             {currentQ + 1} / {totalQ}
           </span>
         </div>
 
-        {/* Progress bar */}
-        <div
-          className="h-[2px] rounded-full mb-8"
-          style={{ background: 'var(--border-subtle)' }}
-        >
+        {/* Progress */}
+        <div className="k-meter mb-6" style={{ height: '0.5rem' }}>
           <motion.div
-            className="h-full rounded-full"
-            style={{ background: 'var(--accent-violet)' }}
+            className="k-meter-fill"
             animate={{ width: `${((currentQ + 1) / totalQ) * 100}%` }}
-            transition={{ duration: 0.3 }}
+            transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
           />
         </div>
 
@@ -371,24 +339,20 @@ export default function AssessmentPage({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
+            className="k-paper k-panel p-6 mb-6"
           >
-            <div
-              className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Question {currentQ + 1} of {totalQ}
-            </div>
+            <div className="k-slug mb-4">Question {currentQ + 1} of {totalQ}</div>
 
             <p
-              className="text-base font-medium mb-6"
-              style={{ color: 'var(--text-primary)', lineHeight: 1.6 }}
+              className="text-xl md:text-2xl font-medium mb-6"
+              style={{ color: 'var(--text-primary)', lineHeight: 1.35 }}
             >
               {question.text}
             </p>
 
             {/* Answer options */}
             <div
-              className="space-y-2.5 mb-8"
+              className="space-y-2.5"
               role="radiogroup"
               aria-label={`Question ${currentQ + 1} options`}
             >
@@ -399,25 +363,26 @@ export default function AssessmentPage({
                   <motion.button
                     key={option}
                     onClick={() => handleSelect(option)}
-                    className="w-full flex items-start gap-3 px-4 py-3 rounded-xl text-left text-sm"
+                    className="w-full flex items-start gap-3 px-4 py-3.5 text-left text-sm cursor-pointer"
                     style={{
-                      background: isSelected
-                        ? 'rgba(124,58,237,0.1)'
-                        : 'var(--bg-surface)',
-                      border: `1px solid ${isSelected ? 'var(--accent-violet)' : 'var(--border-subtle)'}`,
-                      color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      background: isSelected ? 'var(--amber)' : 'var(--bg-surface)',
+                      border: '2px solid var(--border-strong)',
+                      color: 'var(--text-primary)',
+                      boxShadow: isSelected ? 'var(--k-shadow-sm)' : 'none',
                     }}
-                    whileHover={{ scale: 1.005 }}
-                    whileTap={{ scale: 0.995 }}
+                    whileTap={reducedMotion ? {} : { x: 2, y: 2 }}
                     role="radio"
                     aria-checked={isSelected}
                   >
                     <span
-                      className="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5"
+                      className="k-figure flex-shrink-0 flex items-center justify-center mt-0.5"
                       style={{
-                        background: isSelected ? 'var(--accent-violet)' : 'var(--bg-elevated)',
-                        color: isSelected ? 'white' : 'var(--text-muted)',
-                        flexShrink: 0,
+                        width: 22,
+                        height: 22,
+                        fontSize: 11,
+                        border: '2px solid var(--border-strong)',
+                        background: isSelected ? 'var(--ink)' : 'transparent',
+                        color: isSelected ? 'var(--paper)' : 'var(--text-primary)',
                       }}
                     >
                       {label}
@@ -437,11 +402,15 @@ export default function AssessmentPage({
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
-              className="flex items-center gap-2 mb-4 text-xs"
-              style={{ color: 'var(--accent-amber)' }}
+              className="flex items-center gap-2 mb-4 px-3 py-2.5 text-xs"
+              /* --accent-amber, not --amber: this is amber carrying type and a
+                 rule, not filling a block, and plain --amber is 1.8:1 on cream.
+                 --accent-amber is the surface-aware cut that stays legible on
+                 stock and in the light theme, which an alert has to be. */
+              style={{ color: 'var(--accent-amber)', border: '2px solid var(--accent-amber)' }}
               role="alert"
             >
-              <AlertCircle size={13} />
+              <AlertCircle size={13} className="flex-shrink-0" />
               <span>
                 {unansweredCount} question{unansweredCount > 1 ? 's' : ''} unanswered.
                 Answer all questions before submitting.
@@ -451,23 +420,16 @@ export default function AssessmentPage({
         </AnimatePresence>
 
         {/* Navigation */}
-        <div className="flex items-center justify-between">
-          <motion.button
+        <div className="flex items-center justify-between gap-3">
+          <button
             onClick={() => setCurrentQ(q => Math.max(0, q - 1))}
             disabled={currentQ === 0}
-            className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              color: currentQ === 0 ? 'var(--text-muted)' : 'var(--text-secondary)',
-              opacity: currentQ === 0 ? 0.4 : 1,
-            }}
-            whileHover={currentQ > 0 ? { scale: 1.02 } : {}}
-            whileTap={currentQ > 0 ? { scale: 0.98 } : {}}
+            className="k-btn k-btn-outline"
+            style={{ padding: '0.5rem 0.875rem' }}
             aria-label="Previous question"
           >
             <ChevronLeft size={12} /> Previous
-          </motion.button>
+          </button>
 
           {/* Dot indicators */}
           <div className="flex gap-1.5" role="list" aria-label="Question progress">
@@ -475,13 +437,16 @@ export default function AssessmentPage({
               <button
                 key={q.id}
                 onClick={() => setCurrentQ(i)}
-                className="w-2 h-2 rounded-full transition-all"
+                className="cursor-pointer"
                 style={{
+                  width: 9,
+                  height: 9,
+                  border: '1px solid var(--k-edge-strong)',
                   background: answers[q.id]
-                    ? 'var(--accent-violet)'
+                    ? 'var(--amber)'
                     : i === currentQ
                     ? 'var(--text-secondary)'
-                    : 'var(--border-default)',
+                    : 'transparent',
                 }}
                 aria-label={`Go to question ${i + 1}${answers[q.id] ? ' (answered)' : ''}`}
                 role="listitem"
@@ -490,30 +455,22 @@ export default function AssessmentPage({
           </div>
 
           {isLastQ ? (
-            <motion.button
+            <button
               onClick={handleSubmit}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium"
-              style={{ background: 'var(--accent-violet)', color: 'white' }}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
+              className="k-btn k-btn-amber"
+              style={{ padding: '0.5rem 0.875rem' }}
             >
               Submit <ArrowRight size={12} />
-            </motion.button>
+            </button>
           ) : (
-            <motion.button
+            <button
               onClick={() => setCurrentQ(q => Math.min(totalQ - 1, q + 1))}
-              className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-secondary)',
-              }}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              className="k-btn k-btn-outline"
+              style={{ padding: '0.5rem 0.875rem' }}
               aria-label="Next question"
             >
               Next <ChevronRight size={12} />
-            </motion.button>
+            </button>
           )}
         </div>
       </div>
@@ -553,150 +510,98 @@ export default function AssessmentPage({
       <div className="max-w-2xl">
         <a
           href="/assessments"
-          className="flex items-center gap-1 text-xs mb-8"
-          style={{ color: 'var(--text-muted)' }}
+          className="k-label inline-flex items-center gap-1.5 mb-8"
+          style={{ color: 'var(--text-secondary)' }}
         >
           <ChevronLeft size={12} /> Assessments
         </a>
 
-        {/* Score header */}
-        <div className="mb-8">
-          <div
-            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-            style={{ color: scoreColor }}
-          >
-            Assessment complete
-          </div>
+        {/* Header — on the dark room */}
+        <header className="mb-6">
+          <div className="k-slug mb-3">Assessment complete</div>
+          <h1 className="k-display-sm">{assessment.title}</h1>
+        </header>
 
-          <div className="flex items-end gap-4 mb-3">
-            <span
-              className="text-5xl font-bold"
-              style={{ color: scoreColor, lineHeight: 1 }}
-            >
-              {result.score}%
-            </span>
-            <div className="pb-1">
-              <p className="text-sm font-semibold" style={{ color: scoreColor }}>
-                {result.passed ? '✓ Passed' : '✗ Not passed'}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Pass threshold {assessment.passingScore}%
-              </p>
+        <div className="space-y-5">
+          {/* Score — the one primary object on this view */}
+          <div className="k-paper k-panel-hero p-6">
+            <div className="flex flex-wrap items-end gap-5">
+              <span
+                className="k-figure"
+                style={{ fontSize: 'clamp(3rem, 2rem + 4vw, 4.5rem)', lineHeight: 0.9, color: scoreColor }}
+              >
+                {result.score}%
+              </span>
+              <div className="pb-1.5">
+                <div className="k-label" style={{ color: scoreColor, fontSize: 13 }}>
+                  {result.passed ? '✓ Passed' : '✗ Not passed'}
+                </div>
+                <div className="k-label mt-1">
+                  Pass threshold {assessment.passingScore}%
+                </div>
+              </div>
             </div>
           </div>
 
-          <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            {assessment.title}
-          </h1>
+          {/* Per-skill breakdown */}
+          {perSkillPercents.length > 0 && (
+            <div className="k-paper k-panel p-5">
+              <div className="k-slug mb-4">Skill results</div>
+              <div className="space-y-4">
+                {perSkillPercents.map(({ skillId, percent }) => {
+                  const skillName = SKILLS.find(s => s.id === skillId)?.name ?? skillId;
+                  const barColor =
+                    percent >= 80
+                      ? 'var(--accent-green)'
+                      : percent >= 60
+                      ? 'var(--accent-cyan)'
+                      : 'var(--accent-amber)';
+                  return (
+                    <div key={skillId}>
+                      <div className="flex justify-between items-baseline gap-3 mb-1.5">
+                        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{skillName}</span>
+                        <span className="k-figure text-[13px]" style={{ color: barColor }}>
+                          {percent}%
+                        </span>
+                      </div>
+                      <div className="k-meter" style={{ height: '0.4rem' }}>
+                        <motion.div
+                          className="k-meter-fill"
+                          style={{ background: barColor }}
+                          initial={reducedMotion ? false : { width: 0 }}
+                          animate={{ width: `${percent}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* NEXUS noticed */}
+          {insight && (
+            <div className="k-paper k-panel p-5" style={{ borderLeft: '6px solid var(--amber)' }}>
+              <div className="k-slug mb-2">NEXUS noticed</div>
+              <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                {insight}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Per-skill breakdown */}
-        {perSkillPercents.length > 0 && (
-          <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 20, marginBottom: 20 }}>
-            <div
-              className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Skill results
-            </div>
-            <div className="space-y-3.5">
-              {perSkillPercents.map(({ skillId, percent }) => {
-                const skillName = SKILLS.find(s => s.id === skillId)?.name ?? skillId;
-                const barColor =
-                  percent >= 80
-                    ? 'var(--accent-green)'
-                    : percent >= 60
-                    ? 'var(--accent-cyan)'
-                    : 'var(--accent-amber)';
-                return (
-                  <div key={skillId}>
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span style={{ color: 'var(--text-secondary)' }}>{skillName}</span>
-                      <span className="font-semibold tabular-nums" style={{ color: barColor }}>
-                        {percent}%
-                      </span>
-                    </div>
-                    <div
-                      className="h-[3px] rounded-full"
-                      style={{ background: 'var(--border-subtle)' }}
-                    >
-                      <motion.div
-                        className="h-full rounded-full"
-                        style={{ background: barColor }}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${percent}%` }}
-                        transition={{ duration: 0.8, ease: 'easeOut' }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* NEXUS noticed */}
-        {insight && (
-          <div
-            className="mb-6 py-4"
-            style={{
-              borderTop: '1px solid var(--border-subtle)',
-              borderLeft: '2px solid var(--accent-violet)',
-              paddingLeft: 14,
-            }}
-          >
-            <div
-              className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2"
-              style={{ color: 'var(--accent-violet-bright)' }}
-            >
-              NEXUS noticed
-            </div>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-              {insight}
-            </p>
-          </div>
-        )}
-
         {/* Actions */}
-        <div
-          className="flex flex-wrap gap-3"
-          style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 20 }}
-        >
-          <motion.a
-            href="/journey"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium"
-            style={{ background: 'var(--accent-violet)', color: 'white' }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
+        <div className="flex flex-wrap gap-3 mt-6">
+          <a href="/journey" className="k-btn k-btn-amber">
             Continue Journey <ArrowRight size={11} />
-          </motion.a>
-          <motion.a
-            href="/skills"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-secondary)',
-            }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
+          </a>
+          <a href="/skills" className="k-btn k-btn-outline">
             Review Skills
-          </motion.a>
-          <motion.button
-            onClick={handleRetake}
-            className="px-4 py-2 rounded-lg text-xs"
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-muted)',
-            }}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
+          </a>
+          <button onClick={handleRetake} className="k-btn k-btn-outline">
             Retake
-          </motion.button>
+          </button>
         </div>
       </div>
     );

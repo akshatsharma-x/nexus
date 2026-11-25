@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle, Lock, Clock, Zap, X } from 'lucide-react';
+import { useState, useMemo, useCallback } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import {
+  BarChart3, BookOpen, CheckCircle, Clock, Lock, Star, Target, Wrench, Zap,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { ACTIVE_PATH, RESOURCES, PROJECTS, ASSESSMENTS, SKILLS } from '@/lib/data/seed';
 import { formatDuration } from '@/lib/utils';
 import { useJourneyProgress } from '@/lib/context/JourneyProgressContext';
+import { useProjectProgress } from '@/lib/context/ProjectContext';
+import { ModalShell } from '@/components/ui/ModalShell';
 import type { PathNode, LearningResource, Project, Assessment } from '@/lib/types';
 
 // ─── Phase definitions ────────────────────────────────────────────────────────
@@ -38,12 +43,12 @@ const SKILL_MAP: Record<string, string> = Object.fromEntries(
   SKILLS.map(s => [s.id, s.name])
 );
 
-const NODE_EMOJI: Record<string, string> = {
-  resource: '📚',
-  project: '🛠',
-  assessment: '📊',
-  milestone: '⭐',
-  skill: '🎯',
+const NODE_ICON: Record<string, LucideIcon> = {
+  resource: BookOpen,
+  project: Wrench,
+  assessment: BarChart3,
+  milestone: Star,
+  skill: Target,
 };
 
 const DIFF_LABELS = ['', 'Beginner', 'Intermediate', 'Advanced', 'Expert', 'Master'];
@@ -56,93 +61,53 @@ type ModalState =
   | { kind: 'skill'; node: PathNode }
   | null;
 
-// ─── Shared modal shell (bottom sheet) ───────────────────────────────────────
-function ModalShell({
-  label,
-  onClose,
-  children,
-}: {
-  label: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  const closeRef = useRef<HTMLButtonElement>(null);
+// ModalShell is imported from @/components/ui/ModalShell
 
-  useEffect(() => {
-    closeRef.current?.focus();
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+// ─── Shared modal fragments ───────────────────────────────────────────────────
+// The sheet these render into is owned by ModalShell, so every value here is a
+// surface-adaptive var rather than a literal — the same markup has to read on
+// the dark room and on stock.
+function StageContext({ node, nodePhase }: { node: PathNode; nodePhase: typeof PHASES[number] | undefined }) {
+  if (!nodePhase) return null;
+  return (
+    <div className="k-label mb-4 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span>Stage {nodePhase.number}</span>
+      <span aria-hidden="true">/</span>
+      <span>{nodePhase.label}</span>
+      <span aria-hidden="true">/</span>
+      <span style={{ color: 'var(--text-secondary)' }}>{node.title}</span>
+    </div>
+  );
+}
 
+function WhyBlock({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="mb-6 pl-4" style={{ borderLeft: '2px solid var(--k-edge-strong)' }}>
+      <div className="k-label mb-2" style={{ color: 'var(--text-primary)' }}>{title}</div>
+      <p className="text-[13px]" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+        {body}
+      </p>
+    </div>
+  );
+}
+
+function MetaRow({ children }: { children: React.ReactNode }) {
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={label}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 50,
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      }}
+      className="mt-3 mb-5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] nx-numeric"
+      style={{ color: 'var(--text-secondary)' }}
     >
-      <motion.div
-        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      />
-      <motion.div
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 600,
-          maxHeight: '85vh',
-          overflowY: 'auto',
-          background: 'var(--bg-elevated)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '20px 20px 0 0',
-          boxShadow: '0 -8px 40px rgba(0,0,0,0.5)',
-          paddingBottom: 40,
-        }}
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        exit={{ y: '100%' }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      >
-        {/* Drag handle + close */}
-        <div
-          style={{
-            position: 'sticky', top: 0,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '16px 20px 14px',
-            background: 'var(--bg-elevated)',
-            borderBottom: '1px solid var(--border-subtle)',
-            zIndex: 1,
-          }}
-        >
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.12)' }} />
-          <button
-            ref={closeRef}
-            onClick={onClose}
-            aria-label="Close"
-            style={{
-              position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)',
-              width: 28, height: 28, borderRadius: '50%',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'var(--text-muted)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer',
-            }}
-          >
-            <X size={13} />
-          </button>
-        </div>
-        <div style={{ padding: '24px 24px 0' }}>
-          {children}
-        </div>
-      </motion.div>
+      {children}
+    </div>
+  );
+}
+
+function SkillMarks({ names }: { names: string[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {names.map(name => (
+        <span key={name} className="k-badge-quiet">{name}</span>
+      ))}
     </div>
   );
 }
@@ -183,6 +148,44 @@ function deriveObjectives(type: LearningResource['type'], skillNames: string[]):
   }
 }
 
+// ─── Completion confirmation ──────────────────────────────────────────────────
+function CompletionPanel({
+  slug,
+  title,
+  body,
+  unlockedTitle,
+  onClose,
+}: {
+  slug: string;
+  title: string;
+  body: string;
+  unlockedTitle: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="pb-2">
+      <span className="k-tile" aria-hidden="true"><CheckCircle size={18} /></span>
+      <div className="k-slug mt-4">{slug}</div>
+      <h2 className="k-display-sm mt-2">{title}</h2>
+      <p className="text-[13px] mt-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+        {body}
+      </p>
+      {unlockedTitle && (
+        <>
+          <hr className="k-rule-hard my-4" />
+          <div className="k-label mb-1">Now available</div>
+          <div className="text-[14px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+            {unlockedTitle}
+          </div>
+        </>
+      )}
+      <button type="button" className="k-btn k-btn-solid w-full mt-7" onClick={onClose}>
+        Back to Journey
+      </button>
+    </div>
+  );
+}
+
 // ─── Resource modal content ───────────────────────────────────────────────────
 function ResourceModalContent({
   node,
@@ -220,42 +223,13 @@ function ResourceModalContent({
   // Completion confirmation screen
   if (showCompletion) {
     return (
-      <div style={{ paddingBottom: 8 }}>
-        <div
-          style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'rgba(16,185,129,0.1)',
-            border: '1px solid rgba(16,185,129,0.3)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            marginBottom: 20,
-          }}
-        >
-          <CheckCircle size={16} style={{ color: 'var(--accent-green)' }} />
-        </div>
-        <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--accent-green)' }}>
-          Completed
-        </div>
-        <h2 className="text-lg font-bold mb-2" style={{ color: 'var(--text-primary)', lineHeight: 1.3 }}>
-          {resource.title}
-        </h2>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-          {resource.title} is now complete.
-        </p>
-        {unlockedTitle && (
-          <p className="text-sm mt-2" style={{ color: 'var(--accent-cyan)', lineHeight: 1.75 }}>
-            {unlockedTitle} is now available.
-          </p>
-        )}
-        <motion.button
-          className="w-full h-10 rounded-xl text-sm font-semibold mt-8"
-          style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--accent-green)' }}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onClose}
-        >
-          Back to Journey
-        </motion.button>
-      </div>
+      <CompletionPanel
+        slug="Completed"
+        title={resource.title}
+        body={`${resource.title} is now complete.`}
+        unlockedTitle={unlockedTitle}
+        onClose={onClose}
+      />
     );
   }
 
@@ -264,60 +238,38 @@ function ResourceModalContent({
   return (
     <>
       {/* Stage context */}
-      {nodePhase && (
-        <div
-          className="text-[10px] font-bold tracking-[0.15em] uppercase mb-4 flex items-center gap-1.5"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          <span>Stage {nodePhase.number}</span>
-          <span style={{ color: 'var(--border-default)' }}>·</span>
-          <span>{nodePhase.label}</span>
-          <span style={{ color: 'var(--border-default)' }}>·</span>
-          <span style={{ color: 'var(--text-secondary)' }}>{node.title}</span>
-        </div>
-      )}
+      <StageContext node={node} nodePhase={nodePhase} />
 
       {/* In-progress badge */}
       {inProgress && (
-        <div className="flex items-center gap-2 mb-3">
-          <motion.div
-            style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-violet-bright)', flexShrink: 0 }}
-            animate={{ opacity: [1, 0.35, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-          <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'var(--accent-violet-bright)' }}>
-            In progress · Continue learning
-          </span>
+        <div className="mb-3">
+          <span className="k-badge">In progress · Continue learning</span>
         </div>
       )}
 
       {/* Resource type */}
-      <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-        {resource.type}
-      </div>
+      <div className="k-slug">{resource.type}</div>
 
       {/* Title */}
-      <h2 className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-        {resource.title}
-      </h2>
+      <h2 className="k-display-sm mt-2">{resource.title}</h2>
 
       {/* Metadata */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
+      <MetaRow>
         <span>{resource.provider}</span>
-        <span>·</span>
-        <span className="flex items-center gap-1"><Clock size={10} />{formatDuration(resource.estimatedHours)}</span>
+        <span className="flex items-center gap-1.5">
+          <Clock size={11} aria-hidden="true" />{formatDuration(resource.estimatedHours)}
+        </span>
         {resource.isFree ? (
-          <><span>·</span><span style={{ color: 'var(--accent-green)' }}>Free</span></>
+          <span>Free</span>
         ) : resource.price != null ? (
-          <><span>·</span><span>${resource.price}</span></>
+          <span>${resource.price}</span>
         ) : null}
-        <span>·</span>
-        <span style={{ color: 'var(--accent-violet-bright)' }}>+{node.xpReward} XP</span>
-      </div>
+        <span className="k-figure text-[11px]">+{node.xpReward} XP</span>
+      </MetaRow>
 
       {/* Description */}
       {resource.description && (
-        <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+        <p className="text-[13px] mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
           {resource.description}
         </p>
       )}
@@ -325,41 +277,36 @@ function ResourceModalContent({
       {/* Skills */}
       {skillNames.length > 0 && (
         <>
-          <div style={{ height: 1, background: 'var(--border-subtle)', marginBottom: 16 }} />
+          <hr className="k-rule-hard mb-4" />
           <div className="mb-5">
-            <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-              Skills
-            </div>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {skillNames.join('  ·  ')}
-            </p>
+            <div className="k-label mb-2">Skills</div>
+            <SkillMarks names={skillNames} />
           </div>
         </>
       )}
 
       {/* Why this is in your path */}
-      <div style={{ height: 1, background: 'var(--border-subtle)', marginBottom: 16 }} />
-      <div className="mb-5" style={{ borderLeft: '2px solid rgba(124,58,237,0.5)', paddingLeft: 12 }}>
-        <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--accent-violet-bright)' }}>
-          Why this is in your path
-        </div>
-        <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-          {node.whyRecommended}
-        </p>
-      </div>
+      <hr className="k-rule-hard mb-4" />
+      <WhyBlock title="Why this is in your path" body={node.whyRecommended} />
 
       {/* By the end */}
       {objectives.length > 0 && (
         <>
-          <div style={{ height: 1, background: 'var(--border-subtle)', marginBottom: 16 }} />
+          <hr className="k-rule-hard mb-4" />
           <div className="mb-7">
-            <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-              By the end
-            </div>
+            <div className="k-label mb-3">By the end</div>
             <ul className="space-y-2">
               {objectives.map((obj, i) => (
-                <li key={i} className="flex items-start gap-2 text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-                  <span style={{ color: 'var(--accent-violet-bright)', flexShrink: 0, lineHeight: '1.75' }}>›</span>
+                <li
+                  key={i}
+                  className="flex items-start gap-2.5 text-[13px]"
+                  style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="flex-none"
+                    style={{ width: 6, height: 6, marginTop: 9, background: 'var(--amber)' }}
+                  />
                   <span>{obj}</span>
                 </li>
               ))}
@@ -370,32 +317,17 @@ function ResourceModalContent({
 
       {/* CTA */}
       {isCompleted ? (
-        <div
-          className="w-full h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
-          style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', color: 'var(--accent-green)' }}
-        >
-          <CheckCircle size={14} /> Completed
+        <div className="k-btn k-btn-outline w-full">
+          <CheckCircle size={14} aria-hidden="true" /> Completed
         </div>
       ) : inProgress ? (
-        <motion.button
-          className="w-full h-11 rounded-xl text-sm font-semibold"
-          style={{ background: 'linear-gradient(135deg, var(--accent-violet), var(--accent-violet-bright))', color: 'white' }}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleComplete}
-        >
+        <button type="button" className="k-btn k-btn-solid w-full" onClick={handleComplete}>
           Mark Complete · +{node.xpReward} XP
-        </motion.button>
+        </button>
       ) : (
-        <motion.button
-          className="w-full h-11 rounded-xl text-sm font-semibold"
-          style={{ background: 'linear-gradient(135deg, var(--accent-violet), var(--accent-violet-bright))', color: 'white' }}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={handleStart}
-        >
+        <button type="button" className="k-btn k-btn-amber w-full" onClick={handleStart}>
           Start Learning →
-        </motion.button>
+        </button>
       )}
     </>
   );
@@ -406,82 +338,104 @@ function ProjectModalContent({
   node,
   project,
   onClose,
-  onComplete,
 }: {
   node: PathNode;
   project: Project;
   onClose: () => void;
-  onComplete: () => void;
 }) {
+  const { getStatus, startProject, completeProject } = useProjectProgress();
+  const { nodeStatuses, completeNode } = useJourneyProgress();
+
+  const projectStatus = getStatus(project.id);
+  const liveNodeStatus = nodeStatuses[node.id] ?? node.status;
+  const isNodeCompleted = liveNodeStatus === 'completed';
+  const [showCompletion, setShowCompletion] = useState(false);
+  const [unlockedTitle, setUnlockedTitle] = useState<string | null>(null);
+
   const skillNames = project.skillIds.map(
     id => SKILL_MAP[id] ?? id.replace('sk_', '').replace(/_/g, ' ')
   );
-  const isCompleted = node.status === 'completed';
+  const nodePhase = PHASES.find(ph => ph.nodeIds.includes(node.id));
+
+  const handleStart = () => startProject(project.id);
+
+  const handleComplete = () => {
+    const nextNode = ACTIVE_PATH.nodes.find(n => {
+      const nStatus = nodeStatuses[n.id] ?? n.status;
+      if (nStatus !== 'locked') return false;
+      return n.unlockConditions.every(id =>
+        id === node.id || (nodeStatuses[id] ?? ACTIVE_PATH.nodes.find(nn => nn.id === id)?.status) === 'completed'
+      );
+    });
+    completeProject(project.id);
+    completeNode(node.id);
+    setUnlockedTitle(nextNode?.title ?? null);
+    setShowCompletion(true);
+  };
+
+  // Completion screen
+  if (showCompletion) {
+    return (
+      <CompletionPanel
+        slug="Project complete"
+        title={project.title}
+        body="This project is now part of your learning history."
+        unlockedTitle={unlockedTitle}
+        onClose={onClose}
+      />
+    );
+  }
 
   return (
     <>
-      <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-        Project · {project.type}
-      </div>
-      <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-        {project.title}
-      </h2>
-      <div className="flex flex-wrap items-center gap-2 mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <span className="flex items-center gap-1"><Clock size={10} />~{project.estimatedHours}h</span>
-        <span>·</span>
+      {/* Stage context */}
+      <StageContext node={node} nodePhase={nodePhase} />
+
+      {/* In-progress badge */}
+      {projectStatus === 'in_progress' && !isNodeCompleted && (
+        <div className="mb-3">
+          <span className="k-badge">In progress · Continue building</span>
+        </div>
+      )}
+
+      <div className="k-slug">Project · {project.type}</div>
+      <h2 className="k-display-sm mt-2">{project.title}</h2>
+      <MetaRow>
+        <span className="flex items-center gap-1.5">
+          <Clock size={11} aria-hidden="true" />~{project.estimatedHours}h
+        </span>
         <span>{DIFF_LABELS[project.difficulty] ?? 'Intermediate'}</span>
-        {project.mentorReview && (
-          <><span>·</span><span style={{ color: 'var(--accent-cyan)' }}>Mentor review</span></>
-        )}
-        <span>·</span>
-        <span style={{ color: 'var(--accent-violet-bright)' }}>+{project.xpReward} XP</span>
-      </div>
-      <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+        {project.mentorReview && <span>Mentor review</span>}
+        <span className="k-figure text-[11px]">+{node.xpReward} XP</span>
+      </MetaRow>
+      <p className="text-[13px] mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
         {project.description}
       </p>
       {skillNames.length > 0 && (
-        <div className="mb-5">
-          <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-            Skills developed
+        <>
+          <hr className="k-rule-hard mb-4" />
+          <div className="mb-5">
+            <div className="k-label mb-2">Skills developed</div>
+            <SkillMarks names={skillNames} />
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {skillNames.map(name => (
-              <span
-                key={name}
-                className="text-[11px] px-2 py-0.5 rounded"
-                style={{ background: 'rgba(16,185,129,0.08)', color: 'var(--accent-green)' }}
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
+        </>
       )}
-      <div className="mb-7" style={{ borderLeft: '2px solid rgba(16,185,129,0.4)', paddingLeft: 12 }}>
-        <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--accent-violet-bright)' }}>
-          NEXUS noticed
+      <hr className="k-rule-hard mb-4" />
+      <WhyBlock title="Why this project" body={node.whyRecommended} />
+
+      {/* CTA */}
+      {isNodeCompleted ? (
+        <div className="k-btn k-btn-outline w-full">
+          <CheckCircle size={14} aria-hidden="true" /> Project Completed
         </div>
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-          {node.whyRecommended}
-        </p>
-      </div>
-      {isCompleted ? (
-        <div
-          className="w-full h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
-          style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--accent-green)' }}
-        >
-          <CheckCircle size={14} /> Project Completed
-        </div>
-      ) : (
-        <motion.button
-          className="w-full h-11 rounded-xl text-sm font-semibold"
-          style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--accent-green)' }}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onComplete}
-        >
+      ) : projectStatus === 'in_progress' ? (
+        <button type="button" className="k-btn k-btn-solid w-full" onClick={handleComplete}>
           Mark Project Complete · +{node.xpReward} XP
-        </motion.button>
+        </button>
+      ) : (
+        <button type="button" className="k-btn k-btn-amber w-full" onClick={handleStart}>
+          Start Project →
+        </button>
       )}
     </>
   );
@@ -503,59 +457,33 @@ function AssessmentModalContent({
 
   return (
     <>
-      <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-        Assessment · {assessment.type}
-      </div>
-      <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-        {assessment.title}
-      </h2>
-      <div className="flex flex-wrap items-center gap-2 mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
+      <div className="k-slug">Assessment · {assessment.type}</div>
+      <h2 className="k-display-sm mt-2">{assessment.title}</h2>
+      <MetaRow>
         {assessment.totalQuestions != null && <span>{assessment.totalQuestions} questions</span>}
-        {assessment.totalQuestions != null && <span>·</span>}
-        <span className="flex items-center gap-1"><Clock size={10} />{assessment.estimatedMinutes}min</span>
-        <span>·</span>
+        <span className="flex items-center gap-1.5">
+          <Clock size={11} aria-hidden="true" />{assessment.estimatedMinutes}min
+        </span>
         <span>Pass: {assessment.passingScore}%</span>
-        <span>·</span>
-        <span style={{ color: 'var(--accent-violet-bright)' }}>+{assessment.xpReward} XP</span>
-      </div>
-      <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+        <span className="k-figure text-[11px]">+{assessment.xpReward} XP</span>
+      </MetaRow>
+      <p className="text-[13px] mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
         {assessment.description}
       </p>
       {skillNames.length > 0 && (
-        <div className="mb-5">
-          <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-            Skills assessed
+        <>
+          <hr className="k-rule-hard mb-4" />
+          <div className="mb-5">
+            <div className="k-label mb-2">Skills assessed</div>
+            <SkillMarks names={skillNames} />
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {skillNames.map(name => (
-              <span
-                key={name}
-                className="text-[11px] px-2 py-0.5 rounded"
-                style={{ background: 'rgba(6,182,212,0.08)', color: 'var(--accent-cyan)' }}
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
+        </>
       )}
-      <div className="mb-7" style={{ borderLeft: '2px solid rgba(6,182,212,0.4)', paddingLeft: 12 }}>
-        <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--accent-violet-bright)' }}>
-          NEXUS noticed
-        </div>
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-          {node.whyRecommended}
-        </p>
-      </div>
-      <motion.button
-        className="w-full h-11 rounded-xl text-sm font-semibold"
-        style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--accent-cyan)' }}
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.98 }}
-        onClick={onNavigate}
-      >
+      <hr className="k-rule-hard mb-4" />
+      <WhyBlock title="Why this is next" body={node.whyRecommended} />
+      <button type="button" className="k-btn k-btn-amber w-full" onClick={onNavigate}>
         Go to Assessments →
-      </motion.button>
+      </button>
     </>
   );
 }
@@ -575,70 +503,46 @@ function SkillModalContent({
 
   return (
     <>
-      <div className="text-[10px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-        Skill
-      </div>
-      <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-        {node.title}
-      </h2>
-      <div className="flex flex-wrap items-center gap-2 mb-5 text-xs" style={{ color: 'var(--text-muted)' }}>
-        <span className="flex items-center gap-1"><Clock size={10} />{formatDuration(node.estimatedHours)}</span>
-        <span>·</span>
-        <span style={{ color: 'var(--accent-violet-bright)' }}>+{node.xpReward} XP</span>
-      </div>
-      <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+      <div className="k-slug">Skill</div>
+      <h2 className="k-display-sm mt-2">{node.title}</h2>
+      <MetaRow>
+        <span className="flex items-center gap-1.5">
+          <Clock size={11} aria-hidden="true" />{formatDuration(node.estimatedHours)}
+        </span>
+        <span className="k-figure text-[11px]">+{node.xpReward} XP</span>
+      </MetaRow>
+      <p className="text-[13px] mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
         {node.description}
       </p>
       {skillNames.length > 0 && (
-        <div className="mb-5">
-          <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-            Skills gained
+        <>
+          <hr className="k-rule-hard mb-4" />
+          <div className="mb-5">
+            <div className="k-label mb-2">Skills gained</div>
+            <SkillMarks names={skillNames} />
           </div>
-          <div className="flex flex-wrap gap-1.5">
-            {skillNames.map(name => (
-              <span
-                key={name}
-                className="text-[11px] px-2 py-0.5 rounded"
-                style={{ background: 'rgba(124,58,237,0.08)', color: 'var(--text-secondary)' }}
-              >
-                {name}
-              </span>
-            ))}
-          </div>
-        </div>
+        </>
       )}
-      <div className="mb-7" style={{ borderLeft: '2px solid rgba(124,58,237,0.5)', paddingLeft: 12 }}>
-        <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--accent-violet-bright)' }}>
-          NEXUS noticed
-        </div>
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-          {node.whyRecommended}
-        </p>
-      </div>
+      <hr className="k-rule-hard mb-4" />
+      <WhyBlock title="Why this is next" body={node.whyRecommended} />
       {isCompleted ? (
-        <div
-          className="w-full h-11 rounded-xl text-sm font-semibold flex items-center justify-center gap-2"
-          style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--accent-green)' }}
-        >
-          <CheckCircle size={14} /> Completed
+        <div className="k-btn k-btn-outline w-full">
+          <CheckCircle size={14} aria-hidden="true" /> Completed
         </div>
       ) : (
-        <motion.button
-          className="w-full h-11 rounded-xl text-sm font-semibold"
-          style={{ background: 'linear-gradient(135deg, var(--accent-violet), var(--accent-violet-bright))', color: 'white' }}
-          whileHover={{ scale: 1.01 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onComplete}
-        >
+        <button type="button" className="k-btn k-btn-amber w-full" onClick={onComplete}>
           Mark as Complete · +{node.xpReward} XP
-        </motion.button>
+        </button>
       )}
     </>
   );
 }
 
-// ─── Donut Ring ───────────────────────────────────────────────────────────────
+// ─── Progress ring ────────────────────────────────────────────────────────────
+// A ring is one of the few genuine circles left in the language, so it keeps its
+// round form — but the arc is flat ink with butt caps rather than a gradient.
 function DonutRing({ progress }: { progress: number }) {
+  const prefersReducedMotion = useReducedMotion();
   const r = 38;
   const cx = 44;
   const cy = 44;
@@ -654,23 +558,20 @@ function DonutRing({ progress }: { progress: number }) {
         style={{ transform: 'rotate(-90deg)' }}
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id="donutGrad" x1="0" y1="0" x2="88" y2="88" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#7c3aed" />
-            <stop offset="100%" stopColor="#06b6d4" />
-          </linearGradient>
-        </defs>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border-subtle)" strokeWidth="8" />
         <motion.circle
           cx={cx} cy={cy} r={r}
           fill="none"
-          stroke="url(#donutGrad)"
-          strokeWidth="7"
-          strokeLinecap="round"
+          stroke="var(--text-primary)"
+          strokeWidth="8"
           strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
+          initial={prefersReducedMotion ? false : { strokeDashoffset: circumference }}
           animate={{ strokeDashoffset: targetOffset }}
-          transition={{ type: 'spring', stiffness: 80, damping: 20, delay: 0.4 }}
+          transition={
+            prefersReducedMotion
+              ? { duration: 0 }
+              : { type: 'spring', stiffness: 80, damping: 20, delay: 0.4 }
+          }
         />
       </svg>
       <div
@@ -679,63 +580,47 @@ function DonutRing({ progress }: { progress: number }) {
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         }}
       >
-        <span className="text-2xl font-bold" style={{ color: 'var(--text-primary)', lineHeight: 1 }}>
+        <span className="k-figure" style={{ fontSize: 22, lineHeight: 1 }}>
           {progress}%
         </span>
-        <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>complete</span>
+        <span className="k-label mt-1">complete</span>
       </div>
     </div>
   );
 }
 
-// ─── Status Icon (36×36) ──────────────────────────────────────────────────────
+// ─── Status marker (30×30) ────────────────────────────────────────────────────
 function StatusIcon({ status }: { status: PathNode['status'] }) {
   const base = {
-    width: 36, height: 36, borderRadius: '50%' as const,
+    width: 30, height: 30,
     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-  };
+    border: '2px solid var(--k-edge)',
+  } as const;
 
   if (status === 'completed') {
     return (
-      <div style={{ ...base, background: 'rgba(16,185,129,0.12)', border: '1.5px solid var(--accent-green)' }}>
-        <CheckCircle size={15} style={{ color: 'var(--accent-green)' }} />
+      <div style={{ ...base, background: 'var(--text-primary)', color: 'var(--bg-base)' }}>
+        <CheckCircle size={14} aria-hidden="true" />
       </div>
     );
   }
   if (status === 'in_progress') {
     return (
-      <div style={{ ...base, position: 'relative' }}>
-        <motion.div
-          style={{
-            ...base, position: 'absolute',
-            background: 'conic-gradient(from 0deg, #7c3aed, #06b6d4 55%, transparent 65%, transparent)',
-          }}
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-        />
-        <div
-          style={{
-            width: 26, height: 26, borderRadius: '50%',
-            background: 'var(--bg-elevated)',
-            position: 'relative', zIndex: 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent-violet-bright)' }} />
-        </div>
+      <div style={{ ...base, background: 'var(--amber)' }}>
+        <div style={{ width: 8, height: 8, background: 'var(--ink)' }} />
       </div>
     );
   }
   if (status === 'locked') {
     return (
-      <div style={{ ...base, background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)' }}>
-        <Lock size={13} style={{ color: 'var(--text-muted)' }} />
+      <div style={{ ...base, borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}>
+        <Lock size={13} aria-hidden="true" />
       </div>
     );
   }
   return (
-    <div style={{ ...base, border: '1.5px solid var(--border-strong)' }}>
-      <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--text-muted)' }} />
+    <div style={base}>
+      <div style={{ width: 8, height: 8, background: 'var(--text-muted)' }} />
     </div>
   );
 }
@@ -752,6 +637,7 @@ interface PathNodeCardProps {
 
 function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onTakeAssessment }: PathNodeCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
   const isLocked = node.status === 'locked';
   const isActive = node.status === 'in_progress';
   const isCompleted = node.status === 'completed';
@@ -765,11 +651,7 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
       ? ACTIVE_PATH.nodes.find(n => n.id === node.unlockConditions[0])?.title
       : null;
 
-  const spineLineColor = isCompleted
-    ? 'linear-gradient(to bottom, var(--accent-green), var(--accent-violet))'
-    : isActive
-    ? 'var(--accent-violet)'
-    : 'var(--border-subtle)';
+  const spineColor = isCompleted || isActive ? 'var(--k-edge)' : 'var(--border-default)';
 
   const panelId = `node-panel-${node.id}`;
 
@@ -779,16 +661,19 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
   return (
     <motion.div
       className="flex gap-4"
-      initial={{ opacity: 0, x: -10 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.06, duration: 0.3, ease: 'easeOut' }}
-      style={{ opacity: isLocked ? 0.4 : 1 }}
+      transition={{
+        delay: prefersReducedMotion ? 0 : index * 0.06,
+        duration: prefersReducedMotion ? 0 : 0.3,
+        ease: 'easeOut',
+      }}
     >
       {/* Spine column */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 36, flexShrink: 0, paddingTop: 4 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 30, flexShrink: 0, paddingTop: 6 }}>
         <StatusIcon status={node.status} />
         {!isLast && (
-          <div style={{ width: 2, flex: 1, minHeight: 20, marginTop: 4, background: spineLineColor, opacity: 0.5 }} />
+          <div style={{ width: 2, flex: 1, minHeight: 18, marginTop: 6, background: spineColor }} />
         )}
       </div>
 
@@ -802,52 +687,43 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
           aria-controls={isLocked ? undefined : panelId}
         >
           <motion.div
-            className="rounded-xl p-4"
-            style={{
-              background: isActive ? 'rgba(124,58,237,0.06)' : 'transparent',
-              border: '1px solid transparent',
-            }}
-            whileHover={!isLocked ? { y: -1, boxShadow: '0 4px 20px rgba(124,58,237,0.15)' } : {}}
-            animate={isActive ? {
-              borderColor: ['rgba(124,58,237,0.3)', 'rgba(124,58,237,0.6)', 'rgba(124,58,237,0.3)'],
-            } : { borderColor: 'transparent' }}
-            transition={isActive ? { duration: 2.5, repeat: Infinity } : { duration: 0.15 }}
+            className="px-3 py-3"
+            style={{ background: isActive ? 'var(--bg-elevated)' : 'transparent' }}
+            whileHover={!isLocked && !prefersReducedMotion ? { x: 2 } : undefined}
+            transition={{ duration: 0.15 }}
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
-                <div
-                  className="text-sm font-semibold leading-snug"
-                  style={{
-                    color: isLocked ? 'var(--text-muted)' : isCompleted ? 'var(--text-secondary)' : 'var(--text-primary)',
-                    textDecoration: isCompleted ? 'line-through' : undefined,
-                    filter: isLocked ? 'blur(0.5px)' : undefined,
-                  }}
-                >
-                  {node.title}
-                </div>
-                <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                  <span className="flex items-center gap-1">
-                    <Clock size={9} />{formatDuration(node.estimatedHours)}
+                <div className="flex items-baseline gap-2.5">
+                  <span className="k-label nx-numeric" aria-hidden="true">
+                    {String(node.order).padStart(2, '0')}
                   </span>
-                  {!isLocked && <span className="capitalize">{node.type}</span>}
+                  <span
+                    className="text-[13px] font-semibold leading-snug"
+                    style={{
+                      color: isLocked ? 'var(--text-muted)' : isCompleted ? 'var(--text-secondary)' : 'var(--text-primary)',
+                      textDecoration: isCompleted ? 'line-through' : undefined,
+                    }}
+                  >
+                    {node.title}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 pl-[26px] text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={11} aria-hidden="true" />{formatDuration(node.estimatedHours)}
+                  </span>
+                  {!isLocked && <span className="k-label">{node.type}</span>}
                   {isLocked && prerequisiteTitle && <span>Requires: {prerequisiteTitle}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
-                {isActive && (
-                  <span
-                    className="text-[10px] px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(124,58,237,0.15)', color: 'var(--accent-violet-bright)' }}
-                  >
-                    in progress
-                  </span>
-                )}
+              <div className="flex items-center gap-2.5 flex-shrink-0">
+                {isActive && <span className="k-badge">In progress</span>}
                 {!isLocked && (
                   <motion.span
                     className="text-base font-light leading-none"
-                    style={{ color: 'var(--text-muted)', display: 'inline-block' }}
+                    style={{ color: 'var(--text-tertiary)', display: 'inline-block' }}
                     animate={{ rotate: expanded ? 90 : 0 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
                     aria-hidden="true"
                   >
                     ›
@@ -865,26 +741,19 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
               id={panelId}
               role="region"
               aria-label={node.title}
-              initial={{ height: 0, opacity: 0 }}
+              initial={prefersReducedMotion ? false : { height: 0, opacity: 0 }}
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.22, ease: 'easeOut' }}
+              transition={{ duration: prefersReducedMotion ? 0 : 0.22, ease: 'easeOut' }}
               className="overflow-hidden"
             >
-              <div
-                className="mx-1 mt-1 rounded-b-xl p-4 space-y-4"
-                style={{
-                  background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-subtle)',
-                  boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.3)',
-                }}
-              >
-                {/* NEXUS noticed */}
-                <div style={{ borderLeft: '2px solid rgba(124,58,237,0.5)', paddingLeft: 12 }}>
-                  <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--accent-violet-bright)' }}>
-                    NEXUS noticed
+              <div className="k-well mt-2 p-4 space-y-4">
+                {/* Why this node is here */}
+                <div className="pl-3" style={{ borderLeft: '2px solid var(--k-edge-strong)' }}>
+                  <div className="k-label mb-2" style={{ color: 'var(--text-primary)' }}>
+                    Why this is here
                   </div>
-                  <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+                  <p className="text-[13px]" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
                     {node.whyRecommended}
                   </p>
                 </div>
@@ -892,18 +761,12 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
                 {/* Skills gained */}
                 {node.skillsGained.length > 0 && (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+                    <hr className="k-rule-thin" />
                     <div>
-                      <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Skills gained
-                      </div>
+                      <div className="k-label mb-2">Skills gained</div>
                       <div className="flex flex-wrap gap-1.5">
                         {node.skillsGained.map(sid => (
-                          <span
-                            key={sid}
-                            className="text-[11px] px-2 py-0.5 rounded"
-                            style={{ background: 'rgba(124,58,237,0.08)', color: 'var(--text-secondary)' }}
-                          >
+                          <span key={sid} className="k-badge-quiet">
                             {SKILL_MAP[sid] ?? sid.replace('sk_', '').replace(/_/g, ' ')}
                           </span>
                         ))}
@@ -915,109 +778,101 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
                 {/* Resource CTA */}
                 {resource ? (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+                    <hr className="k-rule-thin" />
                     <div>
-                      <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Resource
-                      </div>
+                      <div className="k-label mb-2">Resource</div>
                       <div className="mb-3">
-                        <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--text-primary)' }}>
+                        <div className="text-[13px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
                           {resource.title}
                         </div>
-                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {resource.provider} · {resource.type} · {formatDuration(resource.estimatedHours)}
-                          {resource.isFree && <span className="ml-1.5" style={{ color: 'var(--accent-green)' }}>Free</span>}
+                        <div className="text-[11px] flex flex-wrap gap-x-3" style={{ color: 'var(--text-tertiary)' }}>
+                          <span>{resource.provider}</span>
+                          <span>{resource.type}</span>
+                          <span>{formatDuration(resource.estimatedHours)}</span>
+                          {resource.isFree && <span>Free</span>}
                         </div>
                       </div>
-                      <motion.button
-                        className="w-full h-9 rounded-lg text-sm font-semibold"
-                        style={{ background: 'linear-gradient(135deg, var(--accent-violet), var(--accent-violet-bright))', color: 'white' }}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
+                      <button
+                        type="button"
+                        className="k-btn k-btn-solid w-full"
                         onClick={() => onStartLearning(node, resource)}
                       >
                         {isCompleted ? 'Review Resource →' : 'Start Learning →'}
-                      </motion.button>
+                      </button>
                     </div>
                   </>
                 ) : node.type === 'resource' && (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Learning resource unavailable.</p>
+                    <hr className="k-rule-thin" />
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Learning resource unavailable.</p>
                   </>
                 )}
 
                 {/* Project CTA */}
                 {project ? (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+                    <hr className="k-rule-thin" />
                     <div>
-                      <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Project
-                      </div>
+                      <div className="k-label mb-2">Project</div>
                       <div className="mb-3">
-                        <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--text-primary)' }}>
+                        <div className="text-[13px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
                           {project.title}
                         </div>
-                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {project.type} · ~{project.estimatedHours}h
-                          {project.mentorReview ? ' · mentor review' : ''}
+                        <div className="text-[11px] flex flex-wrap gap-x-3" style={{ color: 'var(--text-tertiary)' }}>
+                          <span>{project.type}</span>
+                          <span>~{project.estimatedHours}h</span>
+                          {project.mentorReview && <span>mentor review</span>}
                         </div>
                       </div>
-                      <motion.button
-                        className="w-full h-9 rounded-lg text-sm font-semibold"
-                        style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', color: 'var(--accent-green)' }}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
+                      <button
+                        type="button"
+                        className="k-btn k-btn-solid w-full"
                         onClick={() => onViewProject(node, project)}
                       >
-                        {isCompleted ? 'View Completed Project →' : 'View Project →'}
-                      </motion.button>
+                        {isCompleted ? 'View Completed Project →' : isActive ? 'Continue Project →' : 'View Project →'}
+                      </button>
                     </div>
                   </>
                 ) : node.type === 'project' && (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>This stage doesn&apos;t have a project yet.</p>
+                    <hr className="k-rule-thin" />
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>This stage doesn&apos;t have a project yet.</p>
                   </>
                 )}
 
                 {/* Assessment CTA */}
                 {assessment ? (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
+                    <hr className="k-rule-thin" />
                     <div>
-                      <div className="text-[10px] font-bold tracking-[0.15em] uppercase mb-2" style={{ color: 'var(--text-muted)' }}>
-                        Assessment
-                      </div>
+                      <div className="k-label mb-2">Assessment</div>
                       <div className="mb-3">
-                        <div className="text-xs font-medium mb-0.5" style={{ color: 'var(--text-primary)' }}>
+                        <div className="text-[13px] font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
                           {assessment.title}
                         </div>
-                        <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {assessment.totalQuestions != null ? `${assessment.totalQuestions} questions · ` : ''}
-                          {assessment.estimatedMinutes}min · pass: {assessment.passingScore}%
+                        <div className="text-[11px] flex flex-wrap gap-x-3" style={{ color: 'var(--text-tertiary)' }}>
+                          {assessment.totalQuestions != null && <span>{assessment.totalQuestions} questions</span>}
+                          <span>{assessment.estimatedMinutes}min</span>
+                          <span>pass: {assessment.passingScore}%</span>
                         </div>
                       </div>
-                      <motion.button
-                        className="w-full h-9 rounded-lg text-sm font-semibold"
-                        style={{ background: 'rgba(6,182,212,0.08)', border: '1px solid rgba(6,182,212,0.3)', color: 'var(--accent-cyan)' }}
-                        whileHover={{ scale: 1.01 }}
-                        whileTap={{ scale: 0.98 }}
+                      <button
+                        type="button"
+                        className="k-btn k-btn-solid w-full"
                         onClick={() => onTakeAssessment(node, assessment)}
                       >
                         Take Assessment →
-                      </motion.button>
+                      </button>
                     </div>
                   </>
                 ) : node.type === 'assessment' && (
                   <>
-                    <div style={{ height: 1, background: 'var(--border-subtle)' }} />
-                    <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Assessment unavailable.</p>
+                    <hr className="k-rule-thin" />
+                    <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>Assessment unavailable.</p>
                   </>
                 )}
 
-                {/* Skill node with no sub-content — show no extra fallback, NEXUS noticed + skills is enough */}
+                {/* Skill node with no sub-content — show no extra fallback, the why + skills is enough */}
                 {!hasContent && node.type === 'skill' && null}
               </div>
             </motion.div>
@@ -1032,6 +887,7 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
 export default function JourneyPage() {
   const { nodeStatuses, completeNode, progressPercent, completedCount, totalCount } = useJourneyProgress();
   const router = useRouter();
+  const prefersReducedMotion = useReducedMotion();
   const [modal, setModal] = useState<ModalState>(null);
 
   // Merge seed nodes with live statuses
@@ -1048,14 +904,8 @@ export default function JourneyPage() {
   const activeNodeResource = primaryActiveNode?.resourceId
     ? RESOURCES.find(r => r.id === primaryActiveNode.resourceId) ?? null
     : null;
-
-  const statChips = [
-    { label: `${completedCount} / ${totalCount} milestones`, color: 'var(--text-secondary)' },
-    { label: formatDuration(remainingHours) + ' remaining', color: 'var(--text-muted)' },
-    ...(ACTIVE_PATH.adaptationHistory.length > 0
-      ? [{ label: `Adapted ${ACTIVE_PATH.adaptationHistory.length}×`, color: 'var(--accent-cyan)' }]
-      : []),
-  ];
+  const ActiveNodeIcon = primaryActiveNode ? NODE_ICON[primaryActiveNode.type] ?? Star : Star;
+  const adaptationCount = ACTIVE_PATH.adaptationHistory.length;
 
   // Open modal for spotlight "Continue →" button
   const openForNode = useCallback((node: PathNode) => {
@@ -1082,265 +932,221 @@ export default function JourneyPage() {
   const closeModal = useCallback(() => setModal(null), []);
 
   return (
-    <div>
-      {/* ── Hero Panel ──────────────────────────────────────────────────────── */}
-      <motion.div
-        className="rounded-2xl p-7 mb-8 flex items-center gap-8"
-        style={{
-          background: 'var(--bg-elevated)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          boxShadow: '0 0 60px rgba(124,58,237,0.08)',
-        }}
-        initial={{ opacity: 0, y: -8 }}
+    <div className="max-w-4xl">
+      {/* ── Page header, directly on the dark room ─────────────────────────── */}
+      <motion.header
+        className="mb-7"
+        initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.4 }}
       >
-        <div className="flex-1 min-w-0">
-          <div className="text-[11px] font-bold tracking-[0.2em] uppercase mb-4" style={{ color: 'var(--text-muted)' }}>
-            My Journey
-          </div>
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-5">
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--text-secondary)', lineHeight: 1.1 }}>
-              Frontend Developer
-            </h1>
-            <span className="text-2xl font-thin" style={{ color: 'var(--text-muted)' }}>→</span>
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)', lineHeight: 1.1 }}>
-              ML Engineer
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {statChips.map(chip => (
-              <span
-                key={chip.label}
-                className="text-[11px] px-2.5 py-1 rounded-full"
-                style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', color: chip.color }}
-              >
-                {chip.label}
-              </span>
-            ))}
-          </div>
+        <div className="k-slug">Journey</div>
+        <div className="mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h1 className="k-display-sm" style={{ color: 'var(--text-tertiary)' }}>
+            Frontend Developer
+          </h1>
+          <span className="k-display-sm" style={{ color: 'var(--text-muted)' }} aria-hidden="true">→</span>
+          <h1 className="k-display">ML Engineer</h1>
         </div>
-        <DonutRing progress={progressPercent} />
-      </motion.div>
+        <p className="nx-support mt-4 max-w-xl">
+          {ACTIVE_PATH.description}
+        </p>
+      </motion.header>
 
-      {/* ── Why This Path ────────────────────────────────────────────────────── */}
+      {/* ── Progress + rationale ───────────────────────────────────────────── */}
       <motion.div
-        className="max-w-3xl mb-8 rounded-xl overflow-hidden"
-        style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(255,255,255,0.06)' }}
-        initial={{ opacity: 0 }}
+        className="grid gap-5 sm:grid-cols-[auto_minmax(0,1fr)] mb-5"
+        initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.15, duration: 0.35 }}
+        transition={{ delay: prefersReducedMotion ? 0 : 0.1, duration: prefersReducedMotion ? 0 : 0.35 }}
       >
-        <div className="flex">
-          <div style={{ width: 2, flexShrink: 0, background: 'linear-gradient(to bottom, var(--accent-violet), var(--accent-cyan))' }} />
-          <div className="flex-1 p-5">
-            <div className="flex items-center gap-2.5 mb-3">
-              <motion.div
-                style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-violet-bright)', flexShrink: 0 }}
-                animate={{ opacity: [1, 0.3, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-              <span className="text-[11px] font-bold tracking-[0.18em] uppercase" style={{ color: 'var(--accent-violet-bright)' }}>
-                ⚡ Why this path was built for you
-              </span>
+        <div className="k-paper k-panel p-5 flex items-center gap-5">
+          <DonutRing progress={progressPercent} />
+          <div className="min-w-0 space-y-3">
+            <div>
+              <div className="k-label">Milestones</div>
+              <div className="k-figure text-lg">{completedCount} / {totalCount}</div>
             </div>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
-              {ACTIVE_PATH.recommendationReason}
-            </p>
+            <hr className="k-rule-thin" />
+            <div>
+              <div className="k-label">Remaining</div>
+              <div className="k-figure text-lg">{formatDuration(remainingHours)}</div>
+            </div>
+            {adaptationCount > 0 && (
+              <>
+                <hr className="k-rule-thin" />
+                <div>
+                  <div className="k-label">Adapted</div>
+                  <div className="k-figure text-lg">{adaptationCount}×</div>
+                </div>
+              </>
+            )}
           </div>
+        </div>
+
+        <div className="k-paper k-panel p-5 sm:p-6">
+          <div className="k-slug">Why this path</div>
+          <p className="text-[14px] mt-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.8 }}>
+            {ACTIVE_PATH.recommendationReason}
+          </p>
         </div>
       </motion.div>
 
-      {/* ── NOW LEARNING Spotlight ───────────────────────────────────────────── */}
+      {/* ── NOW LEARNING spotlight — the one hero object on this view ──────── */}
       {primaryActiveNode && (
-        <motion.div
-          className="max-w-3xl mb-10"
-          initial={{ opacity: 0, y: 6 }}
+        <motion.section
+          className="k-paper k-panel-hero p-5 sm:p-6 mb-9"
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.35 }}
+          transition={{ delay: prefersReducedMotion ? 0 : 0.2, duration: prefersReducedMotion ? 0 : 0.35 }}
         >
-          <div className="text-[11px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-            Now Learning
-          </div>
-          <motion.div
-            className="rounded-xl p-5"
-            style={{
-              background: 'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, rgba(6,182,212,0.04) 100%)',
-              border: '1px solid rgba(124,58,237,0.3)',
-            }}
-            animate={{ borderColor: ['rgba(124,58,237,0.3)', 'rgba(124,58,237,0.55)', 'rgba(124,58,237,0.3)'] }}
-            transition={{ duration: 2.5, repeat: Infinity }}
-          >
-            <div className="flex items-start gap-4">
-              <div
-                className="flex-shrink-0 rounded-xl flex items-center justify-center text-2xl"
-                style={{ width: 48, height: 48, background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)' }}
-              >
-                {NODE_EMOJI[primaryActiveNode.type] ?? '⭐'}
+          <div className="flex items-start gap-4">
+            <span className="k-tile" aria-hidden="true"><ActiveNodeIcon size={18} /></span>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <div className="k-slug">Now learning</div>
+                <div className="k-figure text-[13px]">+{primaryActiveNode.xpReward} XP</div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-3 mb-1">
-                  <span className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
-                    {primaryActiveNode.title}
-                  </span>
-                  <span className="text-sm font-bold flex-shrink-0" style={{ color: 'var(--accent-violet-bright)' }}>
-                    +{primaryActiveNode.xpReward} XP
-                  </span>
-                </div>
-                <p className="text-sm mb-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                  {primaryActiveNode.description}
-                </p>
-                {activeNodeResource && (
-                  <div className="text-[11px] mb-4" style={{ color: 'var(--text-muted)' }}>
-                    {activeNodeResource.provider} · {activeNodeResource.type} · {formatDuration(activeNodeResource.estimatedHours)}
-                    {activeNodeResource.isFree && <span className="ml-2" style={{ color: 'var(--accent-green)' }}>Free</span>}
+              <h2 className="k-display-sm mt-2">{primaryActiveNode.title}</h2>
+              <p className="text-[13px] mt-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+                {primaryActiveNode.description}
+              </p>
+              {activeNodeResource && (
+                <>
+                  <hr className="k-rule-hard my-4" />
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+                    <span>{activeNodeResource.provider}</span>
+                    <span>{activeNodeResource.type}</span>
+                    <span>{formatDuration(activeNodeResource.estimatedHours)}</span>
+                    {activeNodeResource.isFree && <span>Free</span>}
                   </div>
-                )}
-                <motion.button
-                  className="px-5 py-2 rounded-lg text-sm font-semibold"
-                  style={{ background: 'var(--accent-violet)', color: 'white' }}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
-                  animate={{
-                    boxShadow: [
-                      '0 0 0px rgba(124,58,237,0)',
-                      '0 0 18px rgba(124,58,237,0.5)',
-                      '0 0 0px rgba(124,58,237,0)',
-                    ],
-                  }}
-                  transition={{ duration: 2.5, repeat: Infinity, delay: 0.5 }}
-                  onClick={() => openForNode(primaryActiveNode)}
-                >
-                  Continue →
-                </motion.button>
-              </div>
+                </>
+              )}
+              <button
+                type="button"
+                className="k-btn k-btn-solid mt-5"
+                onClick={() => openForNode(primaryActiveNode)}
+              >
+                Continue →
+              </button>
             </div>
-          </motion.div>
-        </motion.div>
+          </div>
+        </motion.section>
       )}
 
       {/* ── Phase timeline ───────────────────────────────────────────────────── */}
-      <div className="max-w-3xl">
-        <motion.div
-          className="text-[11px] font-bold tracking-[0.2em] uppercase mb-7"
-          style={{ color: 'var(--text-muted)' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.3 }}
-        >
-          Learning Route
-        </motion.div>
+      <motion.div
+        className="k-slug mb-4"
+        initial={prefersReducedMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: prefersReducedMotion ? 0 : 0.3 }}
+      >
+        Learning route
+      </motion.div>
 
-        <div className="space-y-10">
-          {PHASES.map((phase, phaseIdx) => {
-            const phaseNodes = nodes.filter(n => phase.nodeIds.includes(n.id));
-            const phaseHours = phaseNodes.reduce((s, n) => s + n.estimatedHours, 0);
-            const allComplete = phaseNodes.every(n => n.status === 'completed');
-            const inProgress = phaseNodes.some(n => n.status === 'in_progress');
-            const phaseColor = allComplete
-              ? 'var(--accent-green)'
-              : inProgress
-              ? 'var(--accent-violet-bright)'
-              : 'var(--text-muted)';
+      <div className="space-y-5">
+        {PHASES.map((phase, phaseIdx) => {
+          const phaseNodes = nodes.filter(n => phase.nodeIds.includes(n.id));
+          const phaseHours = phaseNodes.reduce((s, n) => s + n.estimatedHours, 0);
+          const allComplete = phaseNodes.every(n => n.status === 'completed');
+          const inProgress = phaseNodes.some(n => n.status === 'in_progress');
 
-            return (
-              <motion.div
-                key={phase.id}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 + phaseIdx * 0.12, duration: 0.35 }}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="flex-1" style={{ height: 1, background: 'var(--border-subtle)' }} />
-                  <span className="text-[10px] font-bold tabular-nums" style={{ color: 'var(--text-muted)' }}>
-                    {phase.number}
-                  </span>
-                  <span className="text-[11px] font-bold tracking-[0.15em] uppercase" style={{ color: phaseColor }}>
-                    {phase.label}
-                  </span>
-                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                    {formatDuration(phaseHours)}
-                  </span>
-                  <div className="flex-1" style={{ height: 1, background: 'var(--border-subtle)' }} />
+          return (
+            <motion.section
+              key={phase.id}
+              className="k-paper k-panel p-5 sm:p-6"
+              initial={prefersReducedMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{
+                delay: prefersReducedMotion ? 0 : 0.3 + phaseIdx * 0.12,
+                duration: prefersReducedMotion ? 0 : 0.35,
+              }}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3">
+                <div className="min-w-0">
+                  <div className="k-slug">Stage {phase.number}</div>
+                  <h2 className="k-display-sm mt-2">{phase.label}</h2>
                 </div>
-                <p className="text-[11px] mb-5 pl-1" style={{ color: 'var(--text-muted)' }}>
-                  {phase.description}
-                </p>
-                <div>
-                  {phaseNodes.map((node, nodeIdx) => (
-                    <PathNodeCard
-                      key={node.id}
-                      node={node}
-                      index={phaseIdx * 5 + nodeIdx}
-                      isLast={nodeIdx === phaseNodes.length - 1}
-                      onStartLearning={(n, r) => setModal({ kind: 'resource', node: n, resource: r })}
-                      onViewProject={(n, p) => setModal({ kind: 'project', node: n, project: p })}
-                      onTakeAssessment={(n, a) => setModal({ kind: 'assessment', node: n, assessment: a })}
-                    />
-                  ))}
+                <div className="flex items-center gap-3">
+                  <span className={inProgress ? 'k-badge' : 'k-badge-quiet'}>
+                    {allComplete ? 'Complete' : inProgress ? 'Active' : 'Upcoming'}
+                  </span>
+                  <span className="k-figure text-[12px]">{formatDuration(phaseHours)}</span>
                 </div>
-              </motion.div>
-            );
-          })}
-        </div>
+              </div>
+              <p className="text-[13px] mt-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                {phase.description}
+              </p>
 
-        {/* ── Destination ──────────────────────────────────────────────────── */}
-        <motion.div
-          className="mt-12 pt-8"
-          style={{ borderTop: '1px solid var(--border-subtle)' }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-        >
-          <div className="text-[11px] font-bold tracking-[0.2em] uppercase mb-3" style={{ color: 'var(--text-muted)' }}>
-            Your Destination
-          </div>
-          <div className="text-xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-            ML Engineer
-          </div>
-          <p className="text-sm max-w-md mb-3" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-            Design, build, and deploy machine learning systems at scale. Bridge research and production.
-          </p>
-          <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Target: March 2027
-            <span className="mx-2" style={{ color: 'var(--border-default)' }}>·</span>
-            Current readiness: {progressPercent}%
-          </div>
-        </motion.div>
+              <hr className="k-rule-hard my-5" />
 
-        {/* ── Latest Adaptation ────────────────────────────────────────────── */}
-        {ACTIVE_PATH.adaptationHistory.length > 0 && (
-          <motion.div
-            className="mt-6 rounded-xl overflow-hidden"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid rgba(255,255,255,0.06)' }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-          >
-            <div className="flex">
-              <div style={{ width: 2, flexShrink: 0, background: 'var(--accent-cyan)' }} />
-              <div className="flex-1 p-4">
-                {ACTIVE_PATH.adaptationHistory.slice(-1).map((a, i) => (
-                  <div key={i}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Zap size={12} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
-                      <span className="text-[10px] font-bold tracking-[0.15em] uppercase" style={{ color: 'var(--text-muted)' }}>
-                        Path Updated
-                      </span>
-                      <span className="text-xs font-medium" style={{ color: 'var(--accent-cyan)' }}>
-                        {new Date(a.timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
-                      {a.reason}
-                    </p>
-                  </div>
+              <div>
+                {phaseNodes.map((node, nodeIdx) => (
+                  <PathNodeCard
+                    key={node.id}
+                    node={node}
+                    index={phaseIdx * 5 + nodeIdx}
+                    isLast={nodeIdx === phaseNodes.length - 1}
+                    onStartLearning={(n, r) => setModal({ kind: 'resource', node: n, resource: r })}
+                    onViewProject={(n, p) => setModal({ kind: 'project', node: n, project: p })}
+                    onTakeAssessment={(n, a) => setModal({ kind: 'assessment', node: n, assessment: a })}
+                  />
                 ))}
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.section>
+          );
+        })}
       </div>
+
+      {/* ── Destination ──────────────────────────────────────────────────────── */}
+      <motion.section
+        className="k-paper k-panel p-5 sm:p-6 mt-5"
+        initial={prefersReducedMotion ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: prefersReducedMotion ? 0 : 0.7 }}
+      >
+        <div className="k-slug">Your destination</div>
+        <h2 className="k-display-sm mt-2">ML Engineer</h2>
+        <p className="text-[13px] mt-3 max-w-md" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+          Design, build, and deploy machine learning systems at scale. Bridge research and production.
+        </p>
+        <hr className="k-rule-hard my-5" />
+        <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <div>
+            <div className="k-label">Target</div>
+            <div className="k-figure text-base mt-1">March 2027</div>
+          </div>
+          <div>
+            <div className="k-label">Current readiness</div>
+            <div className="k-figure text-base mt-1">{progressPercent}%</div>
+          </div>
+        </div>
+      </motion.section>
+
+      {/* ── Latest Adaptation ────────────────────────────────────────────── */}
+      {adaptationCount > 0 && (
+        <motion.section
+          className="k-paper k-panel p-5 mt-5"
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: prefersReducedMotion ? 0 : 0.8 }}
+        >
+          {ACTIVE_PATH.adaptationHistory.slice(-1).map((a, i) => (
+            <div key={i}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="k-tile" aria-hidden="true"><Zap size={16} /></span>
+                <div className="k-slug">Path updated</div>
+                <span className="k-figure text-[12px]" style={{ color: 'var(--text-secondary)' }}>
+                  {new Date(a.timestamp).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </span>
+              </div>
+              <p className="text-[13px] mt-4" style={{ color: 'var(--text-secondary)', lineHeight: 1.75 }}>
+                {a.reason}
+              </p>
+            </div>
+          ))}
+        </motion.section>
+      )}
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
       <AnimatePresence>
@@ -1359,7 +1165,6 @@ export default function JourneyPage() {
               node={modal.node}
               project={modal.project}
               onClose={closeModal}
-              onComplete={() => handleComplete(modal.node.id)}
             />
           </ModalShell>
         )}
