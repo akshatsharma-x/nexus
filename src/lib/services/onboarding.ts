@@ -464,13 +464,15 @@ export function generateNextQuestion(
       const cr = profile.currentRole;
       const timeline = profile.targetDateRaw ? ` in ${profile.targetDateRaw}` : '';
       const reply = cr
-        ? `Transitioning from ${cr} to ${targetRole}${timeline} — that's a concrete, achievable goal.\n\nTo build the right path, I need to understand your starting point more precisely. How long have you been working in ${cr}? And how would you describe your overall technical depth — primarily the tools of your current role, or have you branched into adjacent areas?`
+        ? `Transitioning from ${cr} to ${targetRole}${timeline} — that's a concrete, achievable goal.\n\nTo build the right path, I need to understand your starting point more precisely. How long have you been in your ${cr} role? And how would you describe your overall technical depth — primarily the tools of your current role, or have you branched into adjacent areas?`
         : `${targetRole}${timeline} — a specific goal makes path planning much more accurate.\n\nTell me about your current background. Are you coming from a software development role, another technical field, or are you largely starting fresh?`;
       return {
         reply,
         nextStage: 'asking_experience',
         suggestedReplies: cr
-          ? [`About 2-3 years in ${cr}`, 'I just started this role', 'I have broader technical experience']
+          // cr is a role label ("Frontend Developer", "Data Analyst"), so it
+          // takes "your … role" / "this role" rather than "working in …".
+          ? ['About 2-3 years in this role', 'I just started this role', 'I have broader technical experience']
           : ['Software developer with a few years experience', 'Some programming background', 'Starting largely from scratch'],
       };
     }
