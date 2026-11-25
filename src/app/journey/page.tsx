@@ -646,10 +646,18 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
   const project = node.projectId ? PROJECTS.find(p => p.id === node.projectId) ?? null : null;
   const assessment = node.assessmentId ? ASSESSMENTS.find(a => a.id === node.assessmentId) ?? null : null;
 
-  const prerequisiteTitle =
-    isLocked && node.unlockConditions.length > 0
-      ? ACTIVE_PATH.nodes.find(n => n.id === node.unlockConditions[0])?.title
-      : null;
+  const { nodeStatuses } = useJourneyProgress();
+  // Name what is still missing, not just the first condition: a step that
+  // needs two prerequisites kept reading "Requires: Statistics & Probability"
+  // after Statistics was finished. Comma-separated, because step titles
+  // already use "+" ("NumPy + Pandas").
+  const prerequisiteTitle = isLocked
+    ? node.unlockConditions
+        .filter(id => (nodeStatuses[id] ?? ACTIVE_PATH.nodes.find(n => n.id === id)?.status) !== 'completed')
+        .map(id => ACTIVE_PATH.nodes.find(n => n.id === id)?.title)
+        .filter(Boolean)
+        .join(', ') || null
+    : null;
 
   const spineColor = isCompleted || isActive ? 'var(--k-edge)' : 'var(--border-default)';
 
@@ -718,6 +726,9 @@ function PathNodeCard({ node, index, isLast, onStartLearning, onViewProject, onT
               </div>
               <div className="flex items-center gap-2.5 flex-shrink-0">
                 {isActive && <span className="k-badge">In progress</span>}
+                {/* Completion is otherwise only a strikethrough and an
+                    aria-hidden check, neither of which a screen reader reads. */}
+                {isCompleted && <span className="sr-only">Completed</span>}
                 {!isLocked && (
                   <motion.span
                     className="text-base font-light leading-none"
