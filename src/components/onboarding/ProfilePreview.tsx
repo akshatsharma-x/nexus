@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from 'framer-motion';
 import type { OnboardingProfile } from '@/lib/types';
+import { resourceTypeLabel } from '@/lib/utils';
 
 type FieldStatus = 'known' | 'partial' | 'unknown';
 
@@ -223,7 +224,7 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
       {hasPrefs && (
         <Section label="Learning style" status="known" shouldReduce={shouldReduce}>
           <span className="text-[13px]" style={{ color: 'var(--text-primary)' }}>
-            {(profile.learningFormatPreference ?? []).join(', ')}
+            {(profile.learningFormatPreference ?? []).map(resourceTypeLabel).join(', ')}
           </span>
         </Section>
       )}

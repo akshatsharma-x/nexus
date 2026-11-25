@@ -1,4 +1,4 @@
-import type { SkillLevel } from '../types';
+import type { ResourceType, SkillLevel } from '../types';
 
 export function cn(...classes: (string | undefined | false | null)[]): string {
   return classes.filter(Boolean).join(' ');
@@ -57,6 +57,31 @@ export function greetingName(fullName: string): string {
   const full = fullName.trim();
   if (!full || full === 'You') return '';
   return full.split(/\s+/)[0];
+}
+
+/** How a learning-format preference reads to a person; the values are enums. */
+const RESOURCE_TYPE_LABELS: Record<ResourceType, string> = {
+  video: 'Videos', article: 'Articles', book: 'Books', course: 'Courses',
+  project: 'Projects', podcast: 'Podcasts', interactive: 'Interactive',
+};
+
+export function resourceTypeLabel(type: ResourceType): string {
+  return RESOURCE_TYPE_LABELS[type] ?? type;
+}
+
+/**
+ * Reads a typed, comma-separated list back into resource types. Accepts the
+ * labels above or the raw values, in any case; anything else is dropped
+ * rather than stored as a type that no recommendation can ever match.
+ */
+export function parseResourceTypes(text: string): ResourceType[] {
+  const byName = new Map<string, ResourceType>();
+  for (const [value, label] of Object.entries(RESOURCE_TYPE_LABELS) as [ResourceType, string][]) {
+    byName.set(value, value);
+    byName.set(label.toLowerCase(), value);
+  }
+  const found = text.split(',').map(s => byName.get(s.trim().toLowerCase()));
+  return [...new Set(found.filter((t): t is ResourceType => !!t))];
 }
 
 export function skillLevelLabel(level: SkillLevel): string {

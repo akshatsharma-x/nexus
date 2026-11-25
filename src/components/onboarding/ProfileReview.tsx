@@ -5,6 +5,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { Edit2, Check, X, ArrowRight } from 'lucide-react';
 import type { OnboardingProfile, OnboardingSkill } from '@/lib/types';
 import { extractTargetRole, extractTimeline } from '@/lib/services/onboarding';
+import { parseResourceTypes, resourceTypeLabel } from '@/lib/utils';
 
 // ─── Inline editable field ────────────────────────────────────────────────────
 
@@ -134,7 +135,7 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
     ? edited.targetDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : '';
 
-  const prefsLabel = (edited.learningFormatPreference ?? []).join(', ');
+  const prefsLabel = (edited.learningFormatPreference ?? []).map(resourceTypeLabel).join(', ');
 
   const strongSkills = edited.currentSkills.filter(s => s.confidence === 'strong');
   const comfortableSkills = edited.currentSkills.filter(s => s.confidence === 'comfortable');
@@ -251,10 +252,11 @@ export function ProfileReview({ profile, onConfirm, onEdit }: ProfileReviewProps
         label="Learning preferences"
         value={prefsLabel}
         onSave={v => {
-          const parts = v.split(',').map(s => s.trim()).filter(Boolean) as OnboardingProfile['learningFormatPreference'];
-          setEdited(p => ({ ...p, learningFormatPreference: parts }));
+          // The field shows labels, so it has to read them back; free text
+          // that names no format is dropped instead of cast to the enum.
+          setEdited(p => ({ ...p, learningFormatPreference: parseResourceTypes(v) }));
         }}
-        placeholder="e.g. video, project"
+        placeholder="e.g. Videos, Projects"
       />
 
       <hr className="k-rule-hard mt-1" />
