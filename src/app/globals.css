@@ -513,8 +513,14 @@ select:focus-visible {
    outrank every layered rule regardless of specificity, so leaving these at the
    top level would silently swallow a `px-6` or a `w-10` on a .k-btn or .k-tile.
    The neutraliser block further down is deliberately NOT layered: it has to beat
-   the legacy .glow-*/.gradient-text-*/.nx-rule rules, which are themselves
-   unlayered. */
+   the legacy glow, gradient-text and nx-rule rules, which are themselves
+   unlayered.
+
+   Never write a glob like ".glow-*" followed by a slash inside a comment in
+   this file: star-slash closes the comment wherever it appears. This block
+   once did exactly that, and the rest of the comment became a selector that
+   swallowed the whole layer below; .k-paper and .k-room were compiled under
+   an empty :is() and matched nothing. */
 @layer components {
 
 .k-paper {
