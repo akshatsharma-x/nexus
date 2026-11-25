@@ -898,8 +898,12 @@ select:focus-visible {
   border: 2px solid var(--k-edge);
   box-shadow: var(--k-shadow-sm);
 }
-/* "ACTIVE" — a square amber chip, ink type. Never a pill. */
-.k-badge {
+/* "ACTIVE" — a square amber chip, ink type. Never a pill.
+   The quiet variant shares the base metrics so it stands on its own: most of
+   its call sites use it without .k-badge, and with only the colour overrides
+   below they rendered as inherited body type in a bare 1px box. */
+.k-badge,
+.k-badge-quiet {
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
