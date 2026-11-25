@@ -127,9 +127,10 @@ function IntroScreen({ value, onChange, onSubmit }: IntroProps) {
             style={{ opacity: ready ? 1 : 0.45, transition: 'opacity 0.2s' }}
             aria-disabled={!ready}
             onClick={() => value.trim() && onSubmit(value.trim())}
-            aria-label="Start"
           >
-            Begin <ArrowRight size={13} />
+            {/* No aria-label: it named this "Start" while it reads "Begin", so
+                a voice-control user saying what they see matched nothing. */}
+            Begin <ArrowRight size={13} aria-hidden="true" />
           </button>
         </div>
       </div>
