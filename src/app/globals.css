@@ -564,7 +564,7 @@ select:focus-visible {
   --accent-amber-glow: transparent;
 
   /* Mastery ramp, darkened to stay distinguishable on stock. */
-  --skill-novice: #77776b;
+  --skill-novice: var(--ink-4);
   --skill-beginner: #1d4ed8;
   --skill-intermediate: #6d28d9;
   --skill-advanced: #0e7490;
@@ -1040,7 +1040,7 @@ html[data-theme="light"] {
   --accent-green-glow: transparent;
   --accent-amber-glow: transparent;
 
-  --skill-novice: #77776b;
+  --skill-novice: var(--ink-4);
   --skill-beginner: #1d4ed8;
   --skill-intermediate: #6d28d9;
   --skill-advanced: #0e7490;

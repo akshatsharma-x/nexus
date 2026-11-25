@@ -55,16 +55,14 @@ export function skillLevelLabel(level: SkillLevel): string {
   return labels[level];
 }
 
+/**
+ * The level's colour as a CSS variable, not a hex, so it re-inks with its
+ * surface: .k-paper and the light theme re-cut the --skill-* ramp for cream,
+ * where the dark-room hexes fall to 2–4:1. Valid wherever CSS takes a colour
+ * (inline style, stylesheets) — not for canvas, WebGL or chart fills.
+ */
 export function skillLevelColor(level: SkillLevel): string {
-  const colors: Record<SkillLevel, string> = {
-    novice: '#4a4a6a',
-    beginner: '#3b82f6',
-    intermediate: '#8b5cf6',
-    advanced: '#06b6d4',
-    expert: '#10b981',
-    master: '#f59e0b',
-  };
-  return colors[level];
+  return `var(--skill-${level})`;
 }
 
 export function skillLevelBgClass(level: SkillLevel): string {
