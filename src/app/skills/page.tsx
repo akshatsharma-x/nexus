@@ -374,7 +374,9 @@ export default function SkillsPage() {
                       style={{
                         borderWidth: 2,
                         background: isActive ? 'var(--amber)' : 'transparent',
-                        color: 'var(--text-primary)',
+                        // An amber block always carries ink: --text-primary is
+                        // near-white on the dark room, 1.7:1 against amber.
+                        color: isActive ? 'var(--ink)' : 'var(--text-primary)',
                       }}
                       aria-pressed={isActive}
                     >
