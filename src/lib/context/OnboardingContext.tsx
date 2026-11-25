@@ -33,6 +33,39 @@ function reviveDates(obj: unknown): unknown {
   return result;
 }
 
+/**
+ * localStorage is user-editable and can hold anything that parses as JSON — a
+ * bare string, a number, `null`, an array. `reviveDates` passes all of those
+ * through unchanged, and adopting one would leave every consumer reading
+ * `.profile` / `.goal` off a non-object. Only a plain object is accepted; the
+ * rest fall back to "never onboarded".
+ */
+function asStoredObject<T>(parsed: unknown): T | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed as T;
+}
+
+/**
+ * The branches this context feeds — every page's `liveContext` and the
+ * recommendation and gap services — reach straight through these five keys, so
+ * a payload written by an older build that is missing one is not usable as a
+ * learner context. Half-adopting it renders a blank error screen; rejecting it
+ * falls back to the demo persona, which is the same outcome as never having
+ * onboarded. Only the top level is checked: nothing here can vouch for the
+ * whole tree, and this is the shape whose absence actually throws.
+ */
+const CONTEXT_REQUIRED_KEYS = ['goal', 'profile', 'user', 'progress', 'behavior'] as const;
+
+function asLearnerContext(parsed: unknown): LearnerContext | null {
+  const obj = asStoredObject<Record<string, unknown>>(parsed);
+  if (!obj) return null;
+  for (const key of CONTEXT_REQUIRED_KEYS) {
+    const val = obj[key];
+    if (!val || typeof val !== 'object' || Array.isArray(val)) return null;
+  }
+  return obj as unknown as LearnerContext;
+}
+
 const PROFILE_KEY = 'nexus_onboarding_profile';
 const CONTEXT_KEY = 'nexus_learner_context';
 
@@ -44,8 +77,10 @@ export function OnboardingContextProvider({ children }: { children: ReactNode })
     try {
       const ps = localStorage.getItem(PROFILE_KEY);
       const cs = localStorage.getItem(CONTEXT_KEY);
-      if (ps) setOnboardingProfile(reviveDates(JSON.parse(ps)) as OnboardingProfile);
-      if (cs) setLearnerContext(reviveDates(JSON.parse(cs)) as LearnerContext);
+      const profile = ps ? asStoredObject<OnboardingProfile>(reviveDates(JSON.parse(ps))) : null;
+      const context = cs ? asLearnerContext(reviveDates(JSON.parse(cs))) : null;
+      if (profile) setOnboardingProfile(profile);
+      if (context) setLearnerContext(context);
     } catch {
       // localStorage may be unavailable (SSR, private browsing) — silently skip
     }

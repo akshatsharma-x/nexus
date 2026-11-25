@@ -25,6 +25,16 @@ function seedStatuses(): Record<string, PathNodeStatus> {
   return Object.fromEntries(ACTIVE_PATH.nodes.map(n => [n.id, n.status]));
 }
 
+/**
+ * localStorage is user-editable and can hold anything that parses as JSON —
+ * including `null`, which reads back as valid JSON but is not a status map.
+ * Anything that is not a plain object is discarded in favour of the seed.
+ */
+function asRecord<T>(parsed: unknown): Record<string, T> | null {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return parsed as Record<string, T>;
+}
+
 function unlockNext(statuses: Record<string, PathNodeStatus>): Record<string, PathNodeStatus> {
   const updated = { ...statuses };
   for (const node of ACTIVE_PATH.nodes) {
@@ -43,11 +53,13 @@ export function JourneyProgressProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setStatuses(JSON.parse(raw) as Record<string, PathNodeStatus>);
+      const stored = raw ? asRecord<PathNodeStatus>(JSON.parse(raw)) : null;
+      if (stored) setStatuses(stored);
     } catch { /* ignore */ }
     try {
       const raw = localStorage.getItem(RESOURCE_STORAGE_KEY);
-      if (raw) setStartedResources(JSON.parse(raw) as Record<string, boolean>);
+      const stored = raw ? asRecord<boolean>(JSON.parse(raw)) : null;
+      if (stored) setStartedResources(stored);
     } catch { /* ignore */ }
   }, []);
 

@@ -15,11 +15,24 @@
  *   (ProcessMessageResult) stays identical — only the internals swap.
  */
 
+import { ACTIVE_GOAL } from '../data/seed';
 import type {
   LearnerContext, LearnerProfile, User, Goal, SkillMastery, Progress,
   LearningBehavior, ResourceType, CareerTrack, SkillLevel, WeeklyActivity,
   OnboardingProfile, OnboardingSkill, OnboardingStage, OnboardingInsight,
 } from '../types';
+
+// ─── Track requirements ───────────────────────────────────────────────────────
+// A goal with no required skills is unusable downstream: gap analysis returns
+// nothing, readiness computes 0, and selectNextBestMove bails out entirely. This
+// build carries a real requirement set for exactly one track, so that set is
+// reused rather than invented — an onboarded ML Engineer goal then measures
+// against the same skills Career and the services already use. Tracks without
+// data stay empty on purpose; fabricating requirements would be worse than
+// admitting they aren't tracked.
+const TRACK_REQUIRED_SKILLS: Partial<Record<CareerTrack, Goal['requiredSkills']>> = {
+  ml_engineer: ACTIVE_GOAL.requiredSkills,
+};
 
 // ─── Role patterns ────────────────────────────────────────────────────────────
 
@@ -226,13 +239,20 @@ function extractLearningPreferences(text: string): {
   const lower = text.toLowerCase();
   const formats: ResourceType[] = [];
 
-  if (/\bvideo\b|\bwatch\b|\byoutube\b/.test(lower)) formats.push('video');
-  if (/\bcourse\b|\bstructured\b|\bcurriculum\b/.test(lower)) formats.push('course');
-  if (/\bproject\b|\bbuild\b|\bhands[\s-]?on\b|\bcoding\b/.test(lower)) formats.push('project');
-  if (/\bread\b|\bbook\b|\bdocumentation\b|\barticle\b/.test(lower)) formats.push('article');
-  if (/\binteractive\b|\bexercise\b/.test(lower)) formats.push('interactive');
+  // Plurals and gerunds are matched explicitly — people answer this question with
+  // "building real projects", not "project". Without the suffixes the app's own
+  // suggested replies extracted nothing.
+  if (/\bvideos?\b|\bwatch(?:ing)?\b|\byoutube\b/.test(lower)) formats.push('video');
+  if (/\bcourses?\b|\bstructured\b|\bcurriculum\b/.test(lower)) formats.push('course');
+  if (/\bprojects?\b|\bbuild(?:ing)?\b|\bhands[\s-]?on\b|\bcoding\b/.test(lower)) formats.push('project');
+  if (/\bread(?:ing)?\b|\bbooks?\b|\bdocumentation\b|\bdocs\b|\barticles?\b/.test(lower)) formats.push('article');
+  if (/\binteractive\b|\bexercises?\b/.test(lower)) formats.push('interactive');
 
-  if (formats.length === 0) formats.push('video', 'project');
+  // No default is injected here. This runs on every message, so defaulting to
+  // ['video', 'project'] let an unrelated turn ("8-10 hours/week") record formats
+  // the learner never asked for — and preferredResourceTypes feeds recommendation
+  // scoring. buildLearnerContext still applies the default if nothing was ever
+  // stated.
 
   let project: OnboardingProfile['projectPreference'] = 'mixed';
   if (/\bstructured\b|\bguided\b|\bstep[\s-]?by[\s-]?step\b/.test(lower)) project = 'structured';
@@ -600,11 +620,17 @@ export function buildLearnerContext(rawProfile: Partial<OnboardingProfile>): Lea
   const userId = `user_onboarded_${Date.now()}`;
   const now = new Date();
 
-  const learningStyle: User['learningStyle'] = p.learningFormatPreference?.includes('project')
+  // One effective format list drives learningStyle, preferredResourceTypes and
+  // practicePreference, so those three can never disagree about the same learner.
+  const formats: ResourceType[] = p.learningFormatPreference?.length
+    ? p.learningFormatPreference
+    : ['video', 'project'];
+
+  const learningStyle: User['learningStyle'] = formats.includes('project')
     ? 'hands_on'
-    : p.learningFormatPreference?.includes('article')
+    : formats.includes('article')
     ? 'reading'
-    : p.learningFormatPreference?.includes('video')
+    : formats.includes('video')
     ? 'visual'
     : 'mixed';
 
@@ -632,22 +658,26 @@ export function buildLearnerContext(rawProfile: Partial<OnboardingProfile>): Lea
     strengths: (p.currentSkills ?? []).filter(s => s.confidence === 'strong').map(s => s.name),
     weaknesses: [],
     interests: p.interests?.length ? p.interests : ['AI/ML'],
-    preferredResourceTypes: p.learningFormatPreference?.length ? p.learningFormatPreference : ['video', 'project'],
+    preferredResourceTypes: formats,
     learningVelocity: Math.min(2, Math.max(0.5, (p.weeklyHoursAvailable ?? 5) / 10)),
     completionRate: 0.7,
     engagementScore: 75,
     lastActive: now,
   };
 
+  const track = (p.targetRoleId ?? 'ml_engineer') as CareerTrack;
+
   const goal: Goal = {
     id: `goal_${userId}`,
     userId,
     title: p.goal || `Become a ${p.targetRole || 'ML Engineer'}`,
     description: p.goalRaw || '',
-    targetRole: (p.targetRoleId ?? 'ml_engineer') as CareerTrack,
+    targetRole: track,
     targetDate: p.targetDate ?? undefined,
     status: 'active',
-    requiredSkills: [],
+    // Copied, not aliased — this context is the learner's own state and must not
+    // share an array with the seed.
+    requiredSkills: [...(TRACK_REQUIRED_SKILLS[track] ?? [])],
     progressPercent: 0,
     createdAt: now,
   };
@@ -677,7 +707,7 @@ export function buildLearnerContext(rawProfile: Partial<OnboardingProfile>): Lea
   const behavior: LearningBehavior = {
     userId,
     learningVelocity: Math.min(2, Math.max(0.5, hrs / 10)),
-    practicePreference: p.learningFormatPreference?.includes('project') ? 0.75 : 0.4,
+    practicePreference: formats.includes('project') ? 0.75 : 0.4,
     conceptRetention: 0.65,
     consistency: 0.5,
     challengeTolerance:
