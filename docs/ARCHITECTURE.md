@@ -218,7 +218,7 @@ The `AIIntelligenceService` in `src/lib/services/ai-intelligence.ts` defines the
 
 Phase 7 replacement: inject `LearnerContext` into a Claude Opus 5 system prompt per method, stream responses where appropriate, fall back to stubs on API failure.
 
-The AI Tutor (`src/app/api/tutor/route.ts`) is already live — it uses Claude Opus 5 with the full learner context in the system prompt and falls back gracefully when `ANTHROPIC_API_KEY` is unset.
+The AI Tutor (`src/app/api/tutor/route.ts`) is **offline by default**: every reply is written in the browser from the learner's own progress data, and no model is called, so a deployment cannot incur API charges. It calls Claude only when **both** `ANTHROPIC_API_KEY` and `TUTOR_AI_ENABLED=true` are set (`src/lib/tutor-ai.ts`) — a key on its own does nothing, so one added to a deployment's environment cannot start billing by itself. With AI on, the full learner context goes into the system prompt, and a failed request falls back to a local reply for that message.
 
 ---
 
@@ -229,8 +229,10 @@ npm run dev      # Development server at localhost:3000
 npm run build    # Production build (TypeScript checked)
 npm run lint     # ESLint
 
-# Optional: enable live AI Tutor
+# Optional: enable the live AI Tutor (bills your Anthropic account per message).
+# Both lines are required; without them the tutor stays offline and free.
 echo "ANTHROPIC_API_KEY=your_key" >> .env.local
+echo "TUTOR_AI_ENABLED=true" >> .env.local
 ```
 
 Routes: `/` · `/journey` · `/skills` · `/assessments` · `/tutor` · `/genome` · `/career` · `/passport` · `/projects` · `/settings`

@@ -13,7 +13,12 @@ import { greetingName, skillLevelLabel } from '@/lib/utils';
 import type { AIMessage } from '@/lib/types';
 
 /** Runtime AI availability — never assumed, always probed. */
-type AiStatus = 'checking' | 'available' | 'fallback';
+/**
+ * offline: the server has no model switched on, so every reply is written on
+ * the device and no request is made. fallback: a model is switched on but a
+ * request failed, so this reply is local and the next one tries again.
+ */
+type AiStatus = 'checking' | 'available' | 'offline' | 'fallback';
 
 /** The opening turn has no time: it is written for the session, not sent at a moment. */
 type Turn = Omit<AIMessage, 'timestamp'> & { timestamp?: Date };
@@ -168,17 +173,18 @@ export default function TutorPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // Ask the server whether the model is actually reachable. Anything other
-  // than an explicit yes means fallback — we never claim AI we don't have.
+  // Ask the server whether a model is switched on. Anything other than an
+  // explicit yes means offline — we never claim AI we don't have, and an
+  // unreachable status endpoint is no reason to keep sending requests.
   useEffect(() => {
     let cancelled = false;
     fetch('/api/tutor/status')
       .then(res => (res.ok ? res.json() : Promise.reject(new Error('status unavailable'))))
       .then(data => {
-        if (!cancelled) setAiStatus(data?.available ? 'available' : 'fallback');
+        if (!cancelled) setAiStatus(data?.available ? 'available' : 'offline');
       })
       .catch(() => {
-        if (!cancelled) setAiStatus('fallback');
+        if (!cancelled) setAiStatus('offline');
       });
     return () => { cancelled = true; };
   }, []);
@@ -279,8 +285,18 @@ What would you like to explore today?`,
     if (!content.trim() || isLoading) return;
 
     const userMsg = stampTurn({ role: 'user', content: content.trim() });
-    setMessages(prev => [...prev, userMsg]);
     setInput('');
+
+    // Offline: answer on the device without a request. The tutor route would
+    // refuse anyway, but asking it per message only produced a failed request
+    // and a console error each time.
+    if (aiStatus === 'offline') {
+      const localMsg = stampTurn({ role: 'assistant', content: getFallbackResponse(content), source: 'fallback' });
+      setMessages(prev => [...prev, userMsg, localMsg]);
+      return;
+    }
+
+    setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
     try {
@@ -320,8 +336,9 @@ What would you like to explore today?`,
         source: 'fallback',
       });
       setMessages(prev => [...prev, fallbackMsg]);
-      // The request failed, so whatever the probe said, we are in fallback.
-      setAiStatus('fallback');
+      // The request failed, so this reply is local — but if the probe has
+      // since said the server is offline, that is the truer state to keep.
+      setAiStatus(s => (s === 'offline' ? s : 'fallback'));
     } finally {
       setIsLoading(false);
     }
@@ -482,12 +499,13 @@ What would you like to dig into?`;
                     style={{ width: 8, height: 8, background: 'var(--text-primary)' }}
                   />
                   <span className="k-label" style={{ color: 'var(--text-primary)' }}>
-                    AI Tutor · Fallback mode
+                    {aiStatus === 'offline' ? 'AI Tutor · Offline' : 'AI Tutor · Fallback mode'}
                   </span>
                 </div>
                 <div className="text-[11px] mt-1.5" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                  No model connection. Replies are written locally from your own
-                  progress data, not generated.
+                  {aiStatus === 'offline'
+                    ? 'Replies are written on this device from your own progress data. No model is called.'
+                    : 'No model connection. Replies are written locally from your own progress data, not generated.'}
                 </div>
               </>
             )}

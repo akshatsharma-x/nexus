@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { MODEL_IDS, CONTEXT_DEPTH_SIZES, PERSONALITY_INSTRUCTIONS } from '@/lib/settings';
+import { isTutorAiEnabled } from '@/lib/tutor-ai';
 
 const DEFAULT_MODEL = 'claude-opus-5';
 const DEFAULT_CONTEXT_DEPTH = 10;
@@ -53,12 +54,13 @@ function buildSystemPrompt(settings: TutorSettings | undefined, contextBlock: st
 }
 
 export async function POST(req: NextRequest) {
-  // Check availability before constructing the SDK client — the Anthropic
-  // constructor throws without a key, which would fail the whole module.
+  // Offline unless deliberately switched on (see isTutorAiEnabled). This
+  // returns before any SDK client is constructed, so a tutor that is not
+  // switched on cannot make a billable request, whatever keys are present.
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  if (!isTutorAiEnabled() || !apiKey) {
     return NextResponse.json(
-      { error: 'AI tutor unavailable — no API key configured', available: false },
+      { error: 'AI tutor is offline', available: false },
       { status: 503 },
     );
   }
