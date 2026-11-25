@@ -1,10 +1,11 @@
 'use client';
 
 import {
-  createContext, useContext, useState, useEffect, useCallback, type ReactNode,
+  createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode,
 } from 'react';
 import { ACTIVE_PATH } from '@/lib/data/seed';
-import type { PathNodeStatus } from '@/lib/types';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import type { LearnerContext, PathNodeStatus } from '@/lib/types';
 
 const STORAGE_KEY = 'nexus_journey_progress';
 const RESOURCE_STORAGE_KEY = 'nexus_resource_started';
@@ -23,6 +24,21 @@ const JourneyProgressContext = createContext<JourneyProgressContextValue | null>
 
 function seedStatuses(): Record<string, PathNodeStatus> {
   return Object.fromEntries(ACTIVE_PATH.nodes.map(n => [n.id, n.status]));
+}
+
+/**
+ * Where the path starts before anything is recorded — the same handoff
+ * MasteryContext makes. The seed's statuses are the demo persona's history,
+ * with three steps already in progress, so an onboarded learner who had
+ * started nothing was shown work "already underway". They start the path
+ * fresh instead: steps with no prerequisites open, the rest locked until
+ * their conditions complete. Recorded progress outranks either baseline.
+ */
+function baselineStatuses(learnerContext: LearnerContext | null): Record<string, PathNodeStatus> {
+  if (!learnerContext) return seedStatuses();
+  return Object.fromEntries(
+    ACTIVE_PATH.nodes.map(n => [n.id, n.unlockConditions.length === 0 ? 'available' : 'locked']),
+  );
 }
 
 /**
@@ -47,14 +63,21 @@ function unlockNext(statuses: Record<string, PathNodeStatus>): Record<string, Pa
 }
 
 export function JourneyProgressProvider({ children }: { children: ReactNode }) {
-  const [statuses, setStatuses] = useState<Record<string, PathNodeStatus>>(seedStatuses);
+  const { learnerContext } = useOnboarding();
+  // Only what the learner has actually recorded; null until they record
+  // something, which is what lets the baseline follow who the learner is.
+  const [recorded, setRecorded] = useState<Record<string, PathNodeStatus> | null>(null);
   const [startedResources, setStartedResources] = useState<Record<string, boolean>>({});
+  const statuses = useMemo(
+    () => recorded ?? baselineStatuses(learnerContext),
+    [recorded, learnerContext],
+  );
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const stored = raw ? asRecord<PathNodeStatus>(JSON.parse(raw)) : null;
-      if (stored) setStatuses(stored);
+      if (stored) setRecorded(stored);
     } catch { /* ignore */ }
     try {
       const raw = localStorage.getItem(RESOURCE_STORAGE_KEY);
@@ -68,12 +91,12 @@ export function JourneyProgressProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeNode = useCallback((nodeId: string) => {
-    setStatuses(prev => {
-      const next = unlockNext({ ...prev, [nodeId]: 'completed' });
+    setRecorded(prev => {
+      const next = unlockNext({ ...(prev ?? baselineStatuses(learnerContext)), [nodeId]: 'completed' });
       persist(next);
       return next;
     });
-  }, [persist]);
+  }, [persist, learnerContext]);
 
   const startResource = useCallback((resourceId: string) => {
     setStartedResources(prev => {

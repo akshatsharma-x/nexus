@@ -1,9 +1,11 @@
 'use client';
 
 import {
-  createContext, useContext, useState, useEffect, useCallback, type ReactNode,
+  createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode,
 } from 'react';
 import { PROJECTS } from '@/lib/data/seed';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import type { LearnerContext } from '@/lib/types';
 
 type ProjectStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -49,15 +51,26 @@ function seedState(): ProjectState {
   return state;
 }
 
+/**
+ * The seed's project history belongs to the demo persona — one project in
+ * progress, one completed, 600 XP earned. An onboarded learner has begun
+ * none of them, so their baseline is empty; recorded progress outranks both.
+ */
+function baselineState(learnerContext: LearnerContext | null): ProjectState {
+  return learnerContext ? {} : seedState();
+}
+
 export function ProjectProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<ProjectState>(seedState);
+  const { learnerContext } = useOnboarding();
+  const [recorded, setRecorded] = useState<ProjectState | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const state = useMemo(() => recorded ?? baselineState(learnerContext), [recorded, learnerContext]);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       const stored = raw ? asProjectState(JSON.parse(raw)) : null;
-      if (stored) setState(stored);
+      if (stored) setRecorded(stored);
     } catch { /* ignore */ }
     setLoaded(true);
   }, []);
@@ -67,30 +80,32 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startProject = useCallback((projectId: string) => {
-    setState(prev => {
-      const entry = prev[projectId];
+    setRecorded(prev => {
+      const base = prev ?? baselineState(learnerContext);
+      const entry = base[projectId];
       if (entry?.status === 'completed' || entry?.status === 'in_progress') return prev;
       const next: ProjectState = {
-        ...prev,
+        ...base,
         [projectId]: { status: 'in_progress', startedAt: new Date().toISOString() },
       };
       persist(next);
       return next;
     });
-  }, [persist]);
+  }, [persist, learnerContext]);
 
   const completeProject = useCallback((projectId: string) => {
-    setState(prev => {
-      const entry = prev[projectId];
+    setRecorded(prev => {
+      const base = prev ?? baselineState(learnerContext);
+      const entry = base[projectId];
       if (entry?.status === 'completed') return prev;
       const next: ProjectState = {
-        ...prev,
+        ...base,
         [projectId]: { ...(entry ?? {}), status: 'completed', completedAt: new Date().toISOString() },
       };
       persist(next);
       return next;
     });
-  }, [persist]);
+  }, [persist, learnerContext]);
 
   const getStatus = useCallback((projectId: string): ProjectStatus => {
     return state[projectId]?.status ?? 'not_started';
