@@ -209,16 +209,24 @@ export default function TutorPage() {
       ? topGaps.map(g => g.skill.name)
       : LEARNER_PROFILE.weaknesses;
 
-    const strengths = onboardingProfile && onboardingProfile.currentSkills.length > 0
-      ? onboardingProfile.currentSkills.map(s => s.name)
+    // The stored profile is only checked for being an object, so its arrays
+    // are checked here: a profile saved without them (an older shape, a
+    // partial write) used to crash this page on `.length` of undefined.
+    const profileSkills = Array.isArray(onboardingProfile?.currentSkills) ? onboardingProfile.currentSkills : [];
+    const profileFormats = Array.isArray(onboardingProfile?.learningFormatPreference)
+      ? onboardingProfile.learningFormatPreference
+      : [];
+
+    const strengths = profileSkills.length > 0
+      ? profileSkills.map(s => s.name)
       : LEARNER_PROFILE.strengths;
 
     const weeklyHours = onboardingProfile?.weeklyHoursAvailable
       ? `${onboardingProfile.weeklyHoursAvailable}h`
       : settings.weeklyHours;
 
-    const formats = onboardingProfile && onboardingProfile.learningFormatPreference.length > 0
-      ? onboardingProfile.learningFormatPreference.join(', ')
+    const formats = profileFormats.length > 0
+      ? profileFormats.join(', ')
       : settings.preferredFormats;
 
     return {
