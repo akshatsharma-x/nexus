@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useState, useEffect } from 'react';
+import { use, useState } from 'react';
+import Link from 'next/link';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   ChevronLeft, ChevronRight, ArrowRight, AlertCircle, Clock, Target,
@@ -79,7 +80,12 @@ export default function AssessmentPage({
   const { nodeStatuses, completeNode } = useJourneyProgress();
   const reducedMotion = useReducedMotion() ?? false;
 
-  const [view, setView] = useState<PageView>('loading');
+  // The learner's own transitions; null until they make one. Until then the
+  // view is derived from storage — loading, then results if this assessment
+  // was already taken, otherwise the intro — rather than copied into state
+  // by an effect once storage loads.
+  const [chosenView, setView] = useState<Exclude<PageView, 'loading'> | null>(null);
+  const view: PageView = chosenView ?? (!loaded ? 'loading' : storedResults[assessmentId] ? 'results' : 'intro');
   const [session, setSession] = useState<AssessmentSession | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [currentQ, setCurrentQ] = useState(0);
@@ -92,14 +98,6 @@ export default function AssessmentPage({
     perSkillPercents: PerSkillPercent[];
   } | null>(null);
 
-  // Set initial view once context finishes loading from localStorage
-  useEffect(() => {
-    if (!loaded) return;
-    setView(storedResults[assessmentId] ? 'results' : 'intro');
-    // Intentionally only run when loaded first becomes true
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
-
   // ── Not found ──────────────────────────────────────────────────────────────
 
   if (!assessment) {
@@ -111,9 +109,9 @@ export default function AssessmentPage({
           <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
             No assessment with ID &ldquo;{assessmentId}&rdquo; exists.
           </p>
-          <a href="/assessments" className="k-btn k-btn-solid">
+          <Link href="/assessments" className="k-btn k-btn-solid">
             <ChevronLeft size={14} /> Back to Assessments
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -145,13 +143,13 @@ export default function AssessmentPage({
 
     return (
       <div className="max-w-2xl">
-        <a
+        <Link
           href="/assessments"
           className="k-label inline-flex items-center gap-1.5 mb-8"
           style={{ color: 'var(--text-secondary)' }}
         >
           <ChevronLeft size={12} /> Assessments
-        </a>
+        </Link>
 
         {/* Header — on the dark room */}
         <header className="mb-6">
@@ -508,13 +506,13 @@ export default function AssessmentPage({
 
     return (
       <div className="max-w-2xl">
-        <a
+        <Link
           href="/assessments"
           className="k-label inline-flex items-center gap-1.5 mb-8"
           style={{ color: 'var(--text-secondary)' }}
         >
           <ChevronLeft size={12} /> Assessments
-        </a>
+        </Link>
 
         {/* Header — on the dark room */}
         <header className="mb-6">
@@ -593,12 +591,12 @@ export default function AssessmentPage({
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3 mt-6">
-          <a href="/journey" className="k-btn k-btn-amber">
+          <Link href="/journey" className="k-btn k-btn-amber">
             Continue Journey <ArrowRight size={11} />
-          </a>
-          <a href="/skills" className="k-btn k-btn-outline">
+          </Link>
+          <Link href="/skills" className="k-btn k-btn-outline">
             Review Skills
-          </a>
+          </Link>
           <button onClick={handleRetake} className="k-btn k-btn-outline">
             Retake
           </button>
