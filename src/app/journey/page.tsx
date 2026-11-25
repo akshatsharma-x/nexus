@@ -612,8 +612,11 @@ function StatusIcon({ status }: { status: PathNode['status'] }) {
     );
   }
   if (status === 'locked') {
+    // The whole shorthand, not borderColor over base's `border`: when a step
+    // unlocks, React would remove borderColor while border stays set, and
+    // warns that mixing the two across a re-render produces styling bugs.
     return (
-      <div style={{ ...base, borderColor: 'var(--border-default)', color: 'var(--text-muted)' }}>
+      <div style={{ ...base, border: '2px solid var(--border-default)', color: 'var(--text-muted)' }}>
         <Lock size={13} aria-hidden="true" />
       </div>
     );
