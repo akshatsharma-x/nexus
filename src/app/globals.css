@@ -1052,7 +1052,12 @@ html[data-theme="light"] {
   --frame-rail: var(--paper-well);
   --frame-topbar: var(--paper-well);
   --frame-edge: rgba(20, 20, 16, 0.14);
-  --frame-well: rgba(20, 20, 16, 0.05);
+  /* A white wash, as in the dark theme, not an ink one. Darkening the rail
+     made the wells a fourth stock the ink ramp was never measured against,
+     and the --ink-4 labels inside them (XP, the goal date, the ⌘K hint)
+     fell to 4.1:1 and 3.7:1. Lifted toward the canvas tone they clear AA,
+     and the wells' 2px ink rules still carry the structure. */
+  --frame-well: rgba(255, 255, 255, 0.45);
   --frame-hover: rgba(20, 20, 16, 0.06);
   --frame-hover-off: rgba(20, 20, 16, 0);
   --frame-active-bg: var(--amber);
