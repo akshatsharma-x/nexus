@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search } from 'lucide-react';
-import { SKILLS } from '@/lib/data/seed';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { Search, X } from 'lucide-react';
+import { ACTIVE_GOAL, DEMO_LEARNER_CONTEXT, SKILLS } from '@/lib/data/seed';
 import { useMastery } from '@/lib/context/MasteryContext';
-import { Badge } from '@/components/ui/Badge';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import { MasteryService } from '@/lib/services/mastery';
 import { SkillBar } from '@/components/ui/SkillBar';
 import { SkillNode } from '@/components/ui/SkillNode';
 import { LearningSphere } from '@/components/visualization/LearningSphere';
@@ -19,9 +20,20 @@ const GOAL_SKILL_ID = 'sk_llm_engineering';
 
 const CATEGORIES = ['All', ...Array.from(new Set(SKILLS.map(s => s.category)))];
 
+// The legend maps to the sphere's node colours, so the swatches keep the
+// dark-room hex values even where the legend itself sits on stock.
+const MASTERY_LEGEND = [
+  { color: '#10b981', label: 'Mastered' },
+  { color: '#8b5cf6', label: 'Strong' },
+  { color: '#06b6d4', label: 'Developing' },
+  { color: '#f59e0b', label: 'Weak' },
+  { color: '#44445a', label: 'Not started' },
+];
+
 // ─── Skill detail panel ───────────────────────────────────────────────────────
 
 function SkillDetailPanel({ skill, mastery, onClose }: { skill: Skill; mastery?: SkillMastery; onClose: () => void }) {
+  const reducedMotion = useReducedMotion() ?? false;
   const level = mastery?.level ?? 'novice';
   const score = mastery?.score ?? 0;
   const color = skillLevelColor(level);
@@ -35,40 +47,51 @@ function SkillDetailPanel({ skill, mastery, onClose }: { skill: Skill; mastery?:
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.25 }}
-      className="sticky top-20 rounded-xl overflow-hidden"
-      style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-default)' }}
+      className="k-paper k-panel sticky top-20"
     >
-      <div className="p-4" style={{ borderBottom: '1px solid var(--border-subtle)', background: `${color}10` }}>
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-lg font-bold mb-1" style={{ color: 'var(--text-primary)' }}>{skill.name}</div>
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
-                style={{ background: `${color}20`, color, border: `1px solid ${color}40` }}>
+      <div className="p-4" style={{ borderBottom: '2px solid var(--border-strong)' }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="k-display-sm mb-2">{skill.name}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* The mastery hue is a block, not type: the ramp hexes are tuned
+                  for the dark room and do not carry text on cream. */}
+              <span className="k-badge k-badge-quiet">
+                <span
+                  aria-hidden="true"
+                  style={{ width: 8, height: 8, background: color, border: '1px solid var(--border-strong)' }}
+                />
                 {skillLevelLabel(level)}
               </span>
-              <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{score}% mastery</span>
+              <span className="k-label">{score}% mastery</span>
             </div>
           </div>
-          <button onClick={onClose} className="text-xs px-2 py-1 rounded"
-            style={{ color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
-            ✕
+          <button
+            onClick={onClose}
+            aria-label={`Close ${skill.name} details`}
+            className="flex-none flex items-center justify-center cursor-pointer"
+            style={{
+              width: 26,
+              height: 26,
+              border: '2px solid var(--border-strong)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <X size={12} />
           </button>
         </div>
-        <div className="mt-3">
-          <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-overlay)' }}>
-            <motion.div className="h-full rounded-full"
-              style={{ background: `linear-gradient(90deg, ${color}80, ${color})` }}
-              initial={{ width: 0 }}
-              animate={{ width: `${score}%` }}
-              transition={{ duration: 0.8 }}
-            />
-          </div>
+        <div className="k-meter mt-3">
+          <motion.div
+            className="k-meter-fill"
+            initial={reducedMotion ? false : { width: 0 }}
+            animate={{ width: `${score}%` }}
+            transition={{ duration: 0.8 }}
+          />
         </div>
       </div>
 
       <div className="p-4 space-y-4">
-        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{skill.description}</p>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{skill.description}</p>
         <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'Market Demand', value: `${skill.demandScore}/100` },
@@ -76,64 +99,53 @@ function SkillDetailPanel({ skill, mastery, onClose }: { skill: Skill; mastery?:
             { label: 'Est. Hours', value: `${skill.estimatedHoursToLearn}h` },
             { label: 'Category', value: skill.category },
           ].map(stat => (
-            <div key={stat.label} className="p-2 rounded-lg" style={{ background: 'var(--bg-elevated)' }}>
-              <div className="text-[9px]" style={{ color: 'var(--text-muted)' }}>{stat.label}</div>
-              <div className="text-xs font-semibold" style={{ color: 'var(--text-primary)' }}>{stat.value}</div>
+            <div key={stat.label} className="k-well p-2.5">
+              <div className="k-label mb-1">{stat.label}</div>
+              <div className="k-figure text-[13px]">{stat.value}</div>
             </div>
           ))}
         </div>
         <div>
-          <div className="flex justify-between text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>
-            <span>Market demand</span>
-            <span style={{ color: 'var(--accent-green)' }}>{skill.demandScore}%</span>
+          <div className="flex justify-between mb-1.5">
+            <span className="k-label">Market demand</span>
+            <span className="k-figure text-[11px]">{skill.demandScore}%</span>
           </div>
-          <div className="h-1.5 rounded-full" style={{ background: 'var(--bg-overlay)' }}>
-            <div className="h-full rounded-full transition-all"
-              style={{ width: `${skill.demandScore}%`, background: 'linear-gradient(90deg, var(--accent-green), var(--accent-cyan))' }} />
+          <div className="k-meter" style={{ height: '0.4rem' }}>
+            <div className="k-meter-fill" style={{ width: `${skill.demandScore}%` }} />
           </div>
         </div>
         {prerequisites.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Prerequisites</div>
+            <div className="k-label mb-2">Prerequisites</div>
             <div className="flex flex-wrap gap-1.5">
               {prerequisites.map(p => p && (
-                <span key={p.id} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border-subtle)' }}>
-                  {p.name}
-                </span>
+                <span key={p.id} className="k-badge k-badge-quiet">{p.name}</span>
               ))}
             </div>
           </div>
         )}
         {related.length > 0 && (
           <div>
-            <div className="text-[10px] font-semibold mb-2 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Related Skills</div>
+            <div className="k-label mb-2">Related Skills</div>
             <div className="flex flex-wrap gap-1.5">
               {related.map(r => r && (
-                <span key={r.id} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(6,182,212,0.1)', color: 'var(--accent-cyan)', border: '1px solid rgba(6,182,212,0.25)' }}>
+                <span key={r.id} className="k-badge k-badge-quiet" style={{ color: 'var(--accent-cyan)' }}>
                   {r.name}
                 </span>
               ))}
             </div>
           </div>
         )}
-        <div className="flex flex-wrap gap-1.5">
-          {skill.tags.map(tag => (
-            <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded"
-              style={{ background: 'var(--bg-overlay)', color: 'var(--text-muted)' }}>
-              #{tag}
-            </span>
-          ))}
-        </div>
-        <motion.button
-          className="w-full py-2 rounded-lg text-xs font-medium"
-          style={{ background: 'var(--accent-violet)', color: 'white' }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-        >
+        {skill.tags.length > 0 && (
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {skill.tags.map(tag => (
+              <span key={tag} className="k-label">#{tag}</span>
+            ))}
+          </div>
+        )}
+        <button className="k-btn k-btn-solid w-full">
           {score > 0 ? 'Continue Learning' : 'Start Learning'} →
-        </motion.button>
+        </button>
       </div>
     </motion.div>
   );
@@ -142,20 +154,19 @@ function SkillDetailPanel({ skill, mastery, onClose }: { skill: Skill; mastery?:
 // ─── Knowledge Map section ────────────────────────────────────────────────────
 
 function ReadinessBar({ percent }: { percent: number }) {
+  const reducedMotion = useReducedMotion() ?? false;
+
   return (
     <div className="flex items-center gap-3">
-      <div className="flex-1 h-[3px] rounded-full" style={{ background: 'var(--border-subtle)' }}>
+      <div className="k-meter flex-1" style={{ height: '0.5rem' }}>
         <motion.div
-          className="h-full rounded-full"
-          style={{ background: 'linear-gradient(90deg, var(--accent-violet), var(--accent-cyan))' }}
-          initial={{ width: 0 }}
+          className="k-meter-fill"
+          initial={reducedMotion ? false : { width: 0 }}
           animate={{ width: `${percent}%` }}
           transition={{ duration: 1.2, ease: 'easeOut' }}
         />
       </div>
-      <span className="text-[11px] font-semibold flex-shrink-0" style={{ color: 'var(--accent-cyan)' }}>
-        {percent}%
-      </span>
+      <span className="k-figure text-[13px] flex-shrink-0">{percent}%</span>
     </div>
   );
 }
@@ -185,12 +196,20 @@ export default function SkillsPage() {
     [masteries]
   );
 
-  // Readiness = avg score of skills with any mastery
-  const readiness = useMemo(() => {
-    const relevant = masteries.filter(m => m.score > 0);
-    if (!relevant.length) return 0;
-    return Math.round(relevant.reduce((acc, m) => acc + m.score, 0) / relevant.length);
-  }, [masteries]);
+  // Readiness from the shared service — the figure Career and the tutor
+  // report. This header used to average mastery across tracked skills and
+  // call that "readiness", so it read 53% beside a Career page saying 24%.
+  // The average is still reported, under its own name, by the library below.
+  const readiness = useMemo(
+    () => MasteryService.computeOverallReadiness(masteries, ACTIVE_GOAL),
+    [masteries],
+  );
+
+  // The headline is the learner's role, read the way Home and the rail read
+  // it; it was a hardcoded "ML Engineer" for every learner.
+  const { learnerContext } = useOnboarding();
+  const liveContext = learnerContext ?? DEMO_LEARNER_CONTEXT;
+  const targetRole = liveContext.profile.targetRole || liveContext.goal.title;
 
   const filteredSkills = useMemo(() => {
     return SKILLS.filter(s => {
@@ -212,7 +231,8 @@ export default function SkillsPage() {
     return map;
   }, [filteredSkills]);
 
-  const learnedCount = masteries.filter(m => m.score > 0).length;
+  const scoredMasteries = masteries.filter(m => m.score > 0);
+  const learnedCount = scoredMasteries.length;
   const avgScore = masteries.length > 0
     ? Math.round(masteries.reduce((acc, m) => acc + m.score, 0) / masteries.length)
     : 0;
@@ -220,64 +240,80 @@ export default function SkillsPage() {
   return (
     <div className="max-w-7xl">
 
-      {/* ── Knowledge Map ─────────────────────────────────────────────────── */}
-      <div className="mb-10">
-        {/* Section header */}
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4 mb-6">
-          <div className="flex-1">
-            <div
-              className="text-[10px] font-bold tracking-[0.18em] uppercase mb-2"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Your Knowledge Map
-            </div>
-            <h2 className="text-xl font-bold mb-1" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-              ML Engineer
-            </h2>
-            <div className="flex items-center gap-3 mt-2" style={{ maxWidth: 240 }}>
-              <span className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
-                Current readiness
-              </span>
-              <ReadinessBar percent={readiness} />
-            </div>
-          </div>
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            {[
-              { color: '#10b981', label: 'Mastered' },
-              { color: '#8b5cf6', label: 'Strong' },
-              { color: '#06b6d4', label: 'Developing' },
-              { color: '#f59e0b', label: 'Weak' },
-              { color: '#44445a', label: 'Not started' },
-            ].map(item => (
-              <span key={item.label} className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: item.color }} />
-                {item.label}
-              </span>
-            ))}
-          </div>
+      {/* ── Page header — sits directly on the dark room ───────────────────── */}
+      <header className="mb-6">
+        <div className="k-slug mb-3">Knowledge Map</div>
+        <h1 className="k-display mb-5">{targetRole}</h1>
+        <div className="flex items-center gap-4" style={{ maxWidth: 340 }}>
+          <span className="k-label flex-none">Current readiness</span>
+          <ReadinessBar percent={readiness} />
         </div>
+      </header>
 
-        {/* Sphere + detail panel */}
+      {/* ── Knowledge Map ─────────────────────────────────────────────────── */}
+      <section className="mb-10">
         <div className="flex gap-5 items-start">
-          {/* Sphere container */}
-          <div
-            className="flex-1 min-w-0 rounded-2xl overflow-hidden"
-            style={{
-              background: 'radial-gradient(ellipse at 50% 40%, rgba(124,58,237,0.07) 0%, rgba(6,182,212,0.03) 50%, transparent 80%)',
-              height: 440,
-            }}
-          >
-            <LearningSphere
-              skills={sphereSkills}
-              connections={sphereConnections}
-              selectedSkillId={selectedSkillId}
-              recommendedSkillIds={RECOMMENDED_SKILL_IDS}
-              goalSkillId={GOAL_SKILL_ID}
-              onSkillSelect={setSelectedSkillId}
-              height={440}
-            />
+          <div className="flex-1 min-w-0 space-y-5">
+            {/* The sphere is a dark-room object: it stays off the stock and is
+                framed by a hard rule instead of sitting on a cream sheet. It
+                draws cream lines and amber light on transparency, so .k-room
+                pins the night behind it — without that it would be cream on
+                cream once the app is switched to the light theme. */}
+            <div className="k-room k-panel-flat overflow-hidden" style={{ height: 440 }}>
+              <LearningSphere
+                skills={sphereSkills}
+                connections={sphereConnections}
+                selectedSkillId={selectedSkillId}
+                recommendedSkillIds={RECOMMENDED_SKILL_IDS}
+                goalSkillId={GOAL_SKILL_ID}
+                onSkillSelect={setSelectedSkillId}
+                height={440}
+              />
+            </div>
+
+            {/* The copy and controls that surround the sphere go on stock. */}
+            <div className="k-paper k-panel p-5">
+              <div className="k-label mb-3">Mastery legend</div>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {MASTERY_LEGEND.map(item => (
+                  <span
+                    key={item.label}
+                    className="flex items-center gap-2 text-[11px]"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <span
+                      className="flex-shrink-0"
+                      style={{ width: 8, height: 8, background: item.color, border: '1px solid var(--border-strong)' }}
+                    />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+
+              {!selectedSkillId && (
+                <>
+                  <hr className="k-rule-hard my-4" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="k-label flex-none">Recommended next</span>
+                    {RECOMMENDED_SKILL_IDS.map(id => {
+                      const skill = SKILLS.find(s => s.id === id);
+                      return skill ? (
+                        <button
+                          key={id}
+                          onClick={() => setSelectedSkillId(id)}
+                          className="k-badge k-badge-quiet cursor-pointer"
+                          style={{ color: 'var(--text-primary)', borderWidth: 2 }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'var(--amber)'; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                        >
+                          {skill.name}
+                        </button>
+                      ) : null;
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Selected skill detail — desktop side panel */}
@@ -298,7 +334,7 @@ export default function SkillsPage() {
         <AnimatePresence>
           {selectedSkill && (
             <motion.div
-              className="lg:hidden mt-4"
+              className="lg:hidden mt-5"
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
@@ -312,109 +348,85 @@ export default function SkillsPage() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Recommended next skill hint */}
-        {!selectedSkillId && (
-          <div className="mt-4 flex items-center gap-2" style={{ color: 'var(--text-muted)' }}>
-            <span className="text-[10px] tracking-[0.12em] uppercase">Recommended next</span>
-            <div className="flex gap-2">
-              {RECOMMENDED_SKILL_IDS.map(id => {
-                const skill = SKILLS.find(s => s.id === id);
-                return skill ? (
-                  <button
-                    key={id}
-                    onClick={() => setSelectedSkillId(id)}
-                    className="text-[11px] px-2.5 py-1 rounded-full transition-colors duration-150"
-                    style={{
-                      background: 'rgba(6,182,212,0.08)',
-                      color: 'var(--accent-cyan)',
-                      border: '1px solid rgba(6,182,212,0.2)',
-                    }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.14)'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(6,182,212,0.08)'; }}
-                  >
-                    {skill.name}
-                  </button>
-                ) : null;
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      </section>
 
       {/* ── Skills grid ────────────────────────────────────────────────────── */}
-      <div
-        className="mb-5 pt-8"
-        style={{ borderTop: '1px solid var(--border-subtle)' }}
-      >
-        <div className="flex items-center gap-2 mb-5">
-          <div className="text-[10px] font-bold tracking-[0.18em] uppercase" style={{ color: 'var(--text-muted)' }}>
-            Skill Library
-          </div>
-          <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+      <section className="mb-10">
+        <div className="mb-5">
+          <div className="k-slug mb-2">Skill Library</div>
+          <p className="nx-support">
             {masteries.length} tracking · {learnedCount} learned · {avgScore}% avg mastery
-          </span>
+          </p>
         </div>
 
-        {/* Search + filters */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="flex-1 relative">
-            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search skills..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full pl-8 pr-4 py-2 rounded-lg text-xs"
-              style={{
-                background: 'var(--bg-surface)',
-                border: '1px solid var(--border-subtle)',
-                color: 'var(--text-primary)',
-                outline: 'none',
-              }}
-            />
-          </div>
-          <div className="flex gap-1.5 overflow-x-auto">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className="flex-shrink-0 px-3 py-1.5 rounded-lg text-[10px] font-medium transition-all"
-                style={{
-                  background: selectedCategory === cat ? 'var(--accent-violet)' : 'var(--bg-surface)',
-                  color: selectedCategory === cat ? 'white' : 'var(--text-secondary)',
-                  border: `1px solid ${selectedCategory === cat ? 'var(--accent-violet)' : 'var(--border-subtle)'}`,
-                }}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex gap-5">
-          <div className="flex-1 space-y-6">
-            {Array.from(skillsByCategory.entries()).map(([category, skills]) => (
-              <div key={category}>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-1 h-4 rounded-full" style={{ background: 'var(--accent-violet)' }} />
-                  <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{category}</h3>
-                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>({skills.length})</span>
-                </div>
-                <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4">
-                  {skills.map(skill => (
-                    <SkillNode
-                      key={skill.id}
-                      name={skill.name}
-                      icon={skill.icon || '🧠'}
-                      level={masteryMap.get(skill.id)?.level}
-                      score={masteryMap.get(skill.id)?.score}
-                      onClick={() => setSelectedSkillId(selectedSkillId === skill.id ? null : skill.id)}
-                    />
-                  ))}
-                </div>
+        <div className="flex gap-5 items-start">
+          <div className="k-paper k-panel flex-1 min-w-0 p-5">
+            {/* Search + filters */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
+                <input
+                  type="text"
+                  placeholder="Search skills..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="k-field w-full pl-9 pr-4 py-2 text-xs"
+                />
               </div>
-            ))}
+              <div className="flex gap-1.5 overflow-x-auto">
+                {CATEGORIES.map(cat => {
+                  const isActive = selectedCategory === cat;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className="k-badge flex-shrink-0 cursor-pointer"
+                      style={{
+                        borderWidth: 2,
+                        background: isActive ? 'var(--amber)' : 'transparent',
+                        // An amber block always carries ink: --text-primary is
+                        // near-white on the dark room, 1.7:1 against amber.
+                        color: isActive ? 'var(--ink)' : 'var(--text-primary)',
+                      }}
+                      aria-pressed={isActive}
+                    >
+                      {cat}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <hr className="k-rule-hard my-5" />
+
+            <div className="space-y-6">
+              {Array.from(skillsByCategory.entries()).map(([category, skills]) => (
+                <div key={category}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span style={{ width: 5, height: 16, background: 'var(--amber)', flex: 'none' }} />
+                    <h3 className="k-label" style={{ color: 'var(--text-primary)', fontSize: 12 }}>{category}</h3>
+                    <span className="k-label">({skills.length})</span>
+                  </div>
+                  <div className="grid grid-cols-4 sm:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                    {skills.map(skill => (
+                      <SkillNode
+                        key={skill.id}
+                        name={skill.name}
+                        icon={skill.icon || '🧠'}
+                        level={masteryMap.get(skill.id)?.level}
+                        score={masteryMap.get(skill.id)?.score}
+                        onClick={() => setSelectedSkillId(selectedSkillId === skill.id ? null : skill.id)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {skillsByCategory.size === 0 && (
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  No skills match this search.
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Detail panel alongside skill grid (desktop) */}
@@ -430,32 +442,35 @@ export default function SkillsPage() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </section>
 
       {/* ── Mastery bars ───────────────────────────────────────────────────── */}
-      <div
-        className="pt-6"
-        style={{ borderTop: '1px solid var(--border-subtle)' }}
-      >
-        <div className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4" style={{ color: 'var(--text-muted)' }}>
-          Mastery Breakdown
+      <section>
+        <div className="k-slug mb-4">Mastery Breakdown</div>
+        <div className="k-paper k-panel p-5">
+          {scoredMasteries.length === 0 ? (
+            <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              No mastery recorded yet. Take an assessment to calibrate your scores.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+              {scoredMasteries.map((mastery, i) => {
+                const skill = SKILLS.find(s => s.id === mastery.skillId);
+                if (!skill) return null;
+                return (
+                  <SkillBar
+                    key={mastery.skillId}
+                    name={skill.name}
+                    level={mastery.level}
+                    score={mastery.score}
+                    delay={i * 0.05}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {masteries.filter(m => m.score > 0).map((mastery, i) => {
-            const skill = SKILLS.find(s => s.id === mastery.skillId);
-            if (!skill) return null;
-            return (
-              <SkillBar
-                key={mastery.skillId}
-                name={skill.name}
-                level={mastery.level}
-                score={mastery.score}
-                delay={i * 0.05}
-              />
-            );
-          })}
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -24,7 +24,7 @@ export function EmptyState({
   size = 'md',
 }: EmptyStateProps) {
   const paddings = { sm: 'py-8', md: 'py-12', lg: 'py-16' };
-  const iconSizes = { sm: 32, md: 40, lg: 48 };
+  const iconSizes = { sm: 22, md: 26, lg: 30 };
 
   return (
     <motion.div
@@ -35,30 +35,36 @@ export function EmptyState({
     >
       {(Icon || emoji) && (
         <div
-          className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+          className="w-14 h-14 flex items-center justify-center mb-4"
           style={{
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-subtle)',
+            border: '2px solid var(--k-edge)',
+            boxShadow: 'var(--k-shadow-sm)',
           }}
         >
           {Icon ? (
-            <Icon size={iconSizes[size]} style={{ color: 'var(--text-muted)' }} />
+            <Icon size={iconSizes[size]} style={{ color: 'var(--text-secondary)' }} aria-hidden="true" />
           ) : (
-            <span style={{ fontSize: iconSizes[size] - 8 }}>{emoji}</span>
+            <span style={{ fontSize: iconSizes[size] }} aria-hidden="true">{emoji}</span>
           )}
         </div>
       )}
 
       <h3
-        className="text-sm font-semibold mb-1.5"
-        style={{ color: 'var(--text-primary)' }}
+        className="mb-2 uppercase"
+        style={{
+          fontFamily: 'var(--font-display)',
+          fontWeight: 700,
+          fontSize: 14,
+          letterSpacing: '-0.01em',
+          color: 'var(--text-primary)',
+        }}
       >
         {title}
       </h3>
 
       {description && (
         <p
-          className="text-xs max-w-xs leading-relaxed mb-4"
+          className="text-xs max-w-xs leading-relaxed mb-5"
           style={{ color: 'var(--text-secondary)' }}
         >
           {description}
@@ -66,15 +72,9 @@ export function EmptyState({
       )}
 
       {action && (
-        <motion.button
-          className="px-4 py-2 rounded-lg text-xs font-medium"
-          style={{ background: 'var(--accent-violet)', color: 'white' }}
-          onClick={action.onClick}
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-        >
+        <button type="button" className="k-btn k-btn-amber" onClick={action.onClick}>
           {action.label}
-        </motion.button>
+        </button>
       )}
     </motion.div>
   );
@@ -91,7 +91,7 @@ export function LoadingSkeleton({ className = '', rows = 3 }: LoadingSkeletonPro
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="shimmer rounded-lg"
+          className="shimmer"
           style={{
             height: i === 0 ? 20 : 14,
             width: i === rows - 1 ? '60%' : '100%',
@@ -105,16 +105,16 @@ export function LoadingSkeleton({ className = '', rows = 3 }: LoadingSkeletonPro
 export function LoadingCard({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`p-4 rounded-xl ${className}`}
+      className={`p-4 ${className}`}
       style={{
         background: 'var(--bg-surface)',
-        border: '1px solid var(--border-subtle)',
+        border: '2px solid var(--k-edge)',
       }}
       aria-busy="true"
     >
       <div className="flex items-center gap-3 mb-4">
-        <div className="shimmer w-8 h-8 rounded-lg" />
-        <div className="shimmer h-4 rounded w-32" />
+        <div className="shimmer w-8 h-8" />
+        <div className="shimmer h-4 w-32" />
       </div>
       <LoadingSkeleton rows={3} />
     </div>

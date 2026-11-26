@@ -5,7 +5,7 @@ import {
 } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, X } from 'lucide-react';
 import {
   AssistantMessage, UserMessage, TypingIndicator, SuggestedReplies,
 } from '@/components/onboarding/ConversationMessage';
@@ -24,13 +24,28 @@ const EXAMPLE_PROMPTS = [
   'I want to build production ML systems.',
 ];
 
-const STAGE_LABELS: Partial<Record<OnboardingStage, string>> = {
-  asking_experience: 'Understanding your background',
-  asking_skills: 'Mapping your skills',
-  asking_availability: 'Understanding your availability',
-  asking_preferences: 'Understanding how you learn',
-  review: 'Building your profile',
+// The interview is named by what it is doing, not by how far it has to go — a
+// "step 3 of 6" turns a conversation into a form. Availability and preferences
+// are two questions about the same thing, so they share a name.
+const STAGE_SEQUENCE = [
+  'Understanding your goal',
+  'Understanding your starting point',
+  'Mapping your skills',
+  'Understanding how you learn',
+  'Building your profile',
+];
+
+const STAGE_STEP: Record<OnboardingStage, number> = {
+  intro: 0,
+  asking_experience: 1,
+  asking_skills: 2,
+  asking_availability: 3,
+  asking_preferences: 3,
+  review: 4,
 };
+
+const SUBMIT_ERROR =
+  "I couldn't read that answer. Nothing was lost — send it again, or try rewording it.";
 
 const INITIAL_PROFILE: Partial<OnboardingProfile> = {
   goalRaw: '', goal: '', targetRole: '', targetRoleId: null,
@@ -53,8 +68,8 @@ interface IntroProps {
 
 function IntroScreen({ value, onChange, onSubmit }: IntroProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  const [focused, setFocused] = useState(false);
   const shouldReduce = useReducedMotion();
+  const ready = !!value.trim();
 
   useEffect(() => { ref.current?.focus(); }, []);
 
@@ -65,117 +80,70 @@ function IntroScreen({ value, onChange, onSubmit }: IntroProps) {
     }
   }
 
-  const borderColor = focused
-    ? 'var(--accent-violet-bright)'
-    : value.trim()
-    ? 'var(--border-strong)'
-    : 'var(--border-default)';
-
   return (
     <motion.div
-      className="flex flex-col items-center justify-center min-h-screen px-6"
-      style={{ paddingBottom: '8vh' }}
+      className="relative z-10 mx-auto flex min-h-screen w-full flex-col justify-center px-5 py-16 sm:px-8"
+      style={{ maxWidth: '46rem' }}
       initial={shouldReduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={shouldReduce ? undefined : { opacity: 0, y: -12 }}
       transition={{ duration: 0.4 }}
     >
-      {/* Wordmark */}
-      <div className="mb-14">
-        <span
-          className="text-[11px] font-bold tracking-[0.25em] uppercase"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          NEXUS
-        </span>
-      </div>
+      {/* Headline — sits directly on the dark room, no panel behind it. */}
+      <div className="k-slug">Nexus</div>
+      <h1 className="k-display mt-4">
+        Where do you <span className="k-highlight">want to go</span>?
+      </h1>
+      <p className="nx-support mt-5" style={{ maxWidth: '34rem' }}>
+        Tell me what you&apos;re trying to achieve, in your own words. I&apos;ll work out where
+        you&apos;re starting from before building anything.
+      </p>
 
-      {/* Headline */}
-      <div className="text-center mb-12" style={{ maxWidth: '520px' }}>
-        <h1
-          className="font-bold tracking-tight mb-5"
-          style={{
-            fontSize: 'clamp(2.25rem, 5vw, 3.25rem)',
-            lineHeight: 1.1,
-            color: 'var(--text-primary)',
-          }}
-        >
-          Where do you<br />want to go?
-        </h1>
-        <p
-          className="text-base leading-relaxed"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          Tell me what you're trying to achieve. I'll understand where you're starting from
-          before building your learning path.
-        </p>
-      </div>
+      {/* The composer is the one primary object on this view, so it is the one
+          sheet that gets the amber offset block. */}
+      <div className="k-paper k-panel-hero mt-9 p-5 sm:p-6">
+        <label className="k-label block" htmlFor="onboarding-goal" style={{ color: 'var(--text-tertiary)' }}>
+          Your goal
+        </label>
+        <textarea
+          id="onboarding-goal"
+          ref={ref}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="e.g. I want to become an ML Engineer within 6 months. Right now I build React apps and I've never trained a model."
+          rows={5}
+          className="k-field mt-2.5 w-full resize-none p-3.5 text-[15px]"
+          style={{ lineHeight: '1.7', caretColor: 'var(--ink)' }}
+          aria-label="Tell NEXUS your goal"
+        />
 
-      {/* Input */}
-      <div className="w-full" style={{ maxWidth: '560px' }}>
-        <div
-          style={{
-            borderBottom: `1px solid ${borderColor}`,
-            transition: 'border-color 0.2s',
-            paddingBottom: '4px',
-          }}
-        >
-          <textarea
-            ref={ref}
-            value={value}
-            onChange={e => onChange(e.target.value)}
-            onKeyDown={handleKey}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="e.g. I want to become an ML Engineer within 6 months…"
-            rows={4}
-            className="w-full resize-none text-base py-3"
-            style={{
-              background: 'transparent',
-              color: 'var(--text-primary)',
-              caretColor: 'var(--accent-violet-bright)',
-              lineHeight: '1.7',
-              outline: 'none',
-            }}
-            aria-label="Tell NEXUS your goal"
-          />
-        </div>
-
-        <div className="flex items-center justify-between mt-3">
-          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Enter to begin · Shift+Enter for new line
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+            Enter to begin · Shift+Enter for a new line
           </span>
-          <motion.button
-            className="text-[12px] font-semibold flex items-center gap-1.5 px-4 py-2 rounded-lg"
-            style={{
-              background: value.trim()
-                ? 'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)'
-                : 'var(--bg-elevated)',
-              color: value.trim() ? 'white' : 'var(--text-muted)',
-              transition: 'background 0.2s, color 0.2s',
-            }}
-            whileHover={value.trim() && !shouldReduce ? { scale: 1.02 } : {}}
-            whileTap={value.trim() && !shouldReduce ? { scale: 0.97 } : {}}
+          <button
+            className="k-btn k-btn-solid"
+            style={{ opacity: ready ? 1 : 0.45, transition: 'opacity 0.2s' }}
+            aria-disabled={!ready}
             onClick={() => value.trim() && onSubmit(value.trim())}
-            aria-label="Start"
           >
-            Start <ArrowRight size={13} />
-          </motion.button>
+            {/* No aria-label: it named this "Start" while it reads "Begin", so
+                a voice-control user saying what they see matched nothing. */}
+            Begin <ArrowRight size={13} aria-hidden="true" />
+          </button>
         </div>
+      </div>
 
-        {/* Example prompts */}
-        <div className="mt-10">
-          <p
-            className="text-[10px] tracking-[0.12em] uppercase mb-3"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Examples
-          </p>
-          <div className="space-y-2">
-            {EXAMPLE_PROMPTS.map(prompt => (
-              <ExamplePrompt key={prompt} text={prompt} onSelect={() => onSubmit(prompt)} />
-            ))}
-          </div>
+      {/* Example prompts */}
+      <div className="mt-10">
+        <p className="k-label" style={{ color: 'var(--text-secondary)' }}>
+          Or start from one of these
+        </p>
+        <div className="mt-2">
+          {EXAMPLE_PROMPTS.map(prompt => (
+            <ExamplePrompt key={prompt} text={prompt} onSelect={() => onSubmit(prompt)} />
+          ))}
         </div>
       </div>
     </motion.div>
@@ -185,14 +153,42 @@ function IntroScreen({ value, onChange, onSubmit }: IntroProps) {
 function ExamplePrompt({ text, onSelect }: { text: string; onSelect: () => void }) {
   return (
     <button
-      className="block w-full text-left text-[13px] leading-relaxed py-0.5 transition-colors duration-150"
-      style={{ color: 'var(--text-tertiary)' }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-tertiary)'; }}
+      className="block w-full py-2.5 text-left text-[13px] leading-relaxed transition-colors duration-150"
+      style={{ color: 'var(--text-secondary)', borderTop: '1px solid var(--border-subtle)' }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
       onClick={onSelect}
     >
       {text}
     </button>
+  );
+}
+
+// ─── Stage progression ────────────────────────────────────────────────────────
+
+function StageProgress({ stage }: { stage: OnboardingStage }) {
+  const step = STAGE_STEP[stage] ?? 0;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+      <span className="k-label" style={{ color: 'var(--text-secondary)' }}>
+        {STAGE_SEQUENCE[step] ?? STAGE_SEQUENCE[0]}
+      </span>
+      {/* The stage is already named in text above, so the ticks are decoration. */}
+      <span className="flex items-center gap-1" aria-hidden="true">
+        {STAGE_SEQUENCE.map((name, i) => (
+          <span
+            key={name}
+            className="block"
+            style={{
+              width: i === step ? '1.5rem' : '0.5rem',
+              height: '3px',
+              background: i <= step ? 'var(--amber)' : 'var(--border-default)',
+              transition: 'width 250ms ease, background 250ms ease',
+            }}
+          />
+        ))}
+      </span>
+    </div>
   );
 }
 
@@ -205,9 +201,7 @@ interface ConversationInputProps {
 
 function ConversationInput({ onSubmit, disabled }: ConversationInputProps) {
   const [value, setValue] = useState('');
-  const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const shouldReduce = useReducedMotion();
 
   useEffect(() => {
     if (!disabled) ref.current?.focus();
@@ -223,56 +217,26 @@ function ConversationInput({ onSubmit, disabled }: ConversationInputProps) {
     }
   }
 
-  const borderColor = disabled
-    ? 'var(--border-subtle)'
-    : focused
-    ? 'var(--accent-violet-bright)'
-    : value.trim()
-    ? 'var(--border-strong)'
-    : 'var(--border-default)';
-
   return (
-    <div style={{ opacity: disabled ? 0.55 : 1, transition: 'opacity 0.2s' }}>
-      <div
-        style={{
-          borderBottom: `1px solid ${borderColor}`,
-          transition: 'border-color 0.2s',
-          paddingBottom: '3px',
-        }}
-      >
-        <textarea
-          ref={ref}
-          value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={handleKey}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={disabled ? 'Thinking…' : 'Reply…'}
-          disabled={disabled}
-          rows={2}
-          className="w-full resize-none text-sm py-2"
-          style={{
-            background: 'transparent',
-            color: 'var(--text-primary)',
-            caretColor: 'var(--accent-violet-bright)',
-            lineHeight: '1.65',
-            outline: 'none',
-          }}
-          aria-label="Your reply"
-        />
-      </div>
-      <div className="flex items-center justify-between mt-2.5">
-        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-          Shift+Enter for new line
+    <div style={{ opacity: disabled ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={e => setValue(e.target.value)}
+        onKeyDown={handleKey}
+        placeholder={disabled ? 'Reading your answer…' : 'Write as much as you like…'}
+        disabled={disabled}
+        rows={3}
+        className="k-field w-full resize-none p-3.5 text-[14px]"
+        style={{ lineHeight: '1.7', caretColor: 'var(--ink)' }}
+        aria-label="Your reply"
+      />
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+        <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+          Enter to send · Shift+Enter for a new line
         </span>
-        <motion.button
-          className="text-[11px] font-semibold flex items-center gap-1.5 px-3 py-1.5 rounded-lg"
-          style={{
-            background: value.trim() && !disabled ? 'var(--accent-violet)' : 'var(--bg-elevated)',
-            color: value.trim() && !disabled ? 'white' : 'var(--text-muted)',
-            transition: 'background 0.2s, color 0.2s',
-          }}
-          whileTap={value.trim() && !disabled && !shouldReduce ? { scale: 0.97 } : {}}
+        <button
+          className="k-btn k-btn-solid"
           onClick={() => {
             if (value.trim() && !disabled) {
               onSubmit(value.trim());
@@ -282,8 +246,8 @@ function ConversationInput({ onSubmit, disabled }: ConversationInputProps) {
           disabled={disabled || !value.trim()}
           aria-label="Send reply"
         >
-          Send <ArrowRight size={11} />
-        </motion.button>
+          Send <ArrowRight size={12} />
+        </button>
       </div>
     </div>
   );
@@ -294,6 +258,7 @@ function ConversationInput({ onSubmit, disabled }: ConversationInputProps) {
 export default function OnboardingPage() {
   const router = useRouter();
   const { setOnboardingResult } = useOnboarding();
+  const shouldReduce = useReducedMotion();
 
   const [started, setStarted] = useState(false);
   const [introValue, setIntroValue] = useState('');
@@ -301,6 +266,7 @@ export default function OnboardingPage() {
   const [profile, setProfile] = useState<Partial<OnboardingProfile>>(INITIAL_PROFILE);
   const [stage, setStage] = useState<OnboardingStage>('intro');
   const [isThinking, setIsThinking] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [lastSuggestedReplies, setLastSuggestedReplies] = useState<string[]>([]);
   const [showReview, setShowReview] = useState(false);
   const [showMobileProfile, setShowMobileProfile] = useState(false);
@@ -326,32 +292,42 @@ export default function OnboardingPage() {
     };
     setMessages(prev => [...prev, userMsg]);
     setLastSuggestedReplies([]);
+    setSubmitError(null);
     setIsThinking(true);
 
     if (!started) setStarted(true);
 
-    const delay = 700 + Math.random() * 400;
-    await new Promise(r => setTimeout(r, delay));
+    // Anything that throws in here must still clear the thinking state — the
+    // composer is disabled while it is true, so a stranded `true` deadlocks the
+    // whole interview.
+    try {
+      const delay = 700 + Math.random() * 400;
+      await new Promise(r => setTimeout(r, delay));
 
-    const result = processMessage(text, profile, stage);
+      const result = processMessage(text, profile, stage);
 
-    setProfile(result.mergedProfile);
+      setProfile(result.mergedProfile);
 
-    const aiMsg: OnboardingMessage = {
-      id: nextId(),
-      role: 'assistant',
-      content: result.reply,
-      timestamp: new Date(),
-      insight: result.insight,
-      suggestedReplies: result.suggestedReplies,
-    };
-    setMessages(prev => [...prev, aiMsg]);
-    setLastSuggestedReplies(result.suggestedReplies ?? []);
-    setStage(result.nextStage);
-    setIsThinking(false);
+      const aiMsg: OnboardingMessage = {
+        id: nextId(),
+        role: 'assistant',
+        content: result.reply,
+        timestamp: new Date(),
+        insight: result.insight,
+        suggestedReplies: result.suggestedReplies,
+      };
+      setMessages(prev => [...prev, aiMsg]);
+      setLastSuggestedReplies(result.suggestedReplies ?? []);
+      setStage(result.nextStage);
 
-    if (result.nextStage === 'review') {
-      setShowReview(true);
+      if (result.nextStage === 'review') {
+        setShowReview(true);
+      }
+    } catch {
+      // Never surface the raw error: the reader needs a next action, not a stack.
+      setSubmitError(SUBMIT_ERROR);
+    } finally {
+      setIsThinking(false);
     }
   }, [isThinking, profile, stage, started]);
 
@@ -369,7 +345,8 @@ export default function OnboardingPage() {
 
   if (!started) {
     return (
-      <div className="min-h-screen" style={{ background: 'var(--bg-base)' }}>
+      <div className="relative min-h-screen" style={{ background: 'var(--bg-base)' }}>
+        <div className="nx-atmosphere" aria-hidden="true" />
         <IntroScreen
           value={introValue}
           onChange={setIntroValue}
@@ -381,144 +358,167 @@ export default function OnboardingPage() {
 
   // ── Conversation ─────────────────────────────────────────────────────────
 
-  const stageLabel = STAGE_LABELS[stage];
-
   return (
     <div
-      className="min-h-screen flex flex-col"
+      className="relative flex min-h-screen flex-col"
       style={{ background: 'var(--bg-base)' }}
     >
-      {/* Topbar */}
-      <div
-        className="flex-shrink-0 flex items-center justify-between px-6 py-4 z-10"
-        style={{ borderBottom: '1px solid var(--border-subtle)' }}
-      >
-        <div className="flex items-baseline gap-3">
-          <span
-            className="text-sm font-bold tracking-[0.12em] uppercase"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            NEXUS
-          </span>
-          {stageLabel && (
-            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              {stageLabel}
-            </span>
-          )}
-        </div>
+      <div className="nx-atmosphere" aria-hidden="true" />
 
-        <button
-          className="lg:hidden text-[11px] transition-colors duration-150"
-          style={{ color: 'var(--text-muted)' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; }}
-          onClick={() => setShowMobileProfile(p => !p)}
-          aria-label="Toggle profile preview"
-        >
-          {showMobileProfile ? 'Hide profile' : 'View profile'}
-        </button>
-      </div>
-
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* Conversation column */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-          {/* Mobile profile panel */}
-          <AnimatePresence>
-            {showMobileProfile && (
-              <motion.div
-                className="lg:hidden px-6 pt-6 pb-4"
-                style={{ borderBottom: '1px solid var(--border-subtle)' }}
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.25 }}
-              >
-                <ProfilePreview profile={profile} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto py-10">
-            <div className="mx-auto px-6 sm:px-10 space-y-8" style={{ maxWidth: '680px' }}>
-
-              <AnimatePresence>
-                {messages.map((msg, i) => (
-                  <div key={msg.id}>
-                    {msg.role === 'assistant' ? (
-                      <AssistantMessage
-                        content={msg.content}
-                        insight={msg.insight}
-                        index={i}
-                      />
-                    ) : (
-                      <UserMessage content={msg.content} />
-                    )}
-                  </div>
-                ))}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {isThinking && <TypingIndicator />}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {!isThinking && lastSuggestedReplies.length > 0 && !showReview && (
-                  <SuggestedReplies
-                    replies={lastSuggestedReplies}
-                    onSelect={handleSuggestedReply}
-                  />
-                )}
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {showReview && stage === 'review' && profile.targetRole && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                  >
-                    <ProfileReview
-                      profile={profile as OnboardingProfile}
-                      onConfirm={handleConfirm}
-                      onEdit={() => setShowReview(false)}
-                    />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div ref={messagesEndRef} />
-            </div>
+      {/* Masthead — on the dark room, no panel. */}
+      <header className="relative z-10 flex-shrink-0">
+        <div className="mx-auto flex w-full items-start justify-between gap-4 px-5 py-5 lg:px-8" style={{ maxWidth: '1400px' }}>
+          <div>
+            <div className="k-slug">Nexus</div>
+            <StageProgress stage={stage} />
           </div>
 
-          {/* Input */}
-          {!showReview && (
-            <div
-              className="flex-shrink-0 pt-4 pb-6"
-              style={{ borderTop: '1px solid var(--border-subtle)' }}
-            >
-              <div className="mx-auto px-6 sm:px-10" style={{ maxWidth: '680px' }}>
-                <ConversationInput onSubmit={handleSubmit} disabled={isThinking} />
+          <button
+            className="k-btn k-btn-outline lg:hidden"
+            style={{ padding: '0.5rem 0.75rem' }}
+            onClick={() => setShowMobileProfile(p => !p)}
+            aria-label="Toggle profile preview"
+            aria-expanded={showMobileProfile}
+            aria-controls="onboarding-profile-sheet"
+          >
+            Profile
+          </button>
+        </div>
+      </header>
+
+      {/* Body — two sheets of stock on the room, conversation clearly primary. */}
+      <div className="relative z-10 flex-1 min-h-0 overflow-hidden">
+        <div className="mx-auto flex h-full w-full gap-6 px-5 pb-6 lg:px-8" style={{ maxWidth: '1400px' }}>
+
+          {/* Conversation sheet */}
+          <section className="k-paper k-panel flex min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-8">
+              <div className="space-y-8">
+
+                <AnimatePresence>
+                  {messages.map((msg, i) => (
+                    <div key={msg.id}>
+                      {msg.role === 'assistant' ? (
+                        <AssistantMessage
+                          content={msg.content}
+                          insight={msg.insight}
+                          index={i}
+                        />
+                      ) : (
+                        <UserMessage content={msg.content} />
+                      )}
+                    </div>
+                  ))}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {isThinking && <TypingIndicator />}
+                </AnimatePresence>
+
+                {submitError && (
+                  <div
+                    className="k-well px-4 py-3"
+                    style={{ borderLeft: '3px solid var(--accent-rose)', maxWidth: '36rem' }}
+                    role="alert"
+                  >
+                    <div className="k-slug" style={{ color: 'var(--accent-rose)' }}>Not sent</div>
+                    <p className="mt-1 text-[13px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                      {submitError}
+                    </p>
+                  </div>
+                )}
+
+                <AnimatePresence>
+                  {!isThinking && lastSuggestedReplies.length > 0 && !showReview && (
+                    <SuggestedReplies
+                      replies={lastSuggestedReplies}
+                      onSelect={handleSuggestedReply}
+                    />
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {showReview && stage === 'review' && profile.targetRole && (
+                    <motion.div
+                      initial={shouldReduce ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.3 }}
+                    >
+                      <ProfileReview
+                        profile={profile as OnboardingProfile}
+                        onConfirm={handleConfirm}
+                        onEdit={() => setShowReview(false)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div ref={messagesEndRef} />
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Desktop profile panel */}
-        <div
-          className="hidden lg:block flex-shrink-0 overflow-y-auto py-10 px-8"
-          style={{
-            width: '280px',
-            borderLeft: '1px solid var(--border-subtle)',
-          }}
-          aria-label="Profile forming"
-        >
-          <ProfilePreview profile={profile} />
+            {/* Composer */}
+            {!showReview && (
+              <div
+                className="flex-shrink-0 px-5 py-5 sm:px-8"
+                style={{ borderTop: '2px solid var(--k-edge)' }}
+              >
+                <ConversationInput onSubmit={handleSubmit} disabled={isThinking} />
+              </div>
+            )}
+          </section>
+
+          {/* Profile sheet — secondary, and narrower than the conversation. */}
+          <aside
+            className="k-paper k-panel hidden flex-shrink-0 overflow-y-auto p-6 lg:block"
+            style={{ width: '340px' }}
+            aria-label="Profile forming"
+          >
+            <ProfilePreview profile={profile} />
+          </aside>
         </div>
       </div>
+
+      {/* Mobile: the profile is a sheet pulled over the conversation, never a
+          second column stacked under it. */}
+      <AnimatePresence>
+        {showMobileProfile && (
+          <>
+            <motion.div
+              className="fixed inset-0 z-40 lg:hidden"
+              style={{ background: 'rgba(6, 6, 12, 0.72)' }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setShowMobileProfile(false)}
+              aria-hidden="true"
+            />
+            <motion.div
+              id="onboarding-profile-sheet"
+              className="k-paper k-panel fixed inset-x-0 bottom-0 z-50 max-h-[80vh] overflow-y-auto px-5 pb-8 pt-5 lg:hidden"
+              role="group"
+              aria-label="Profile forming"
+              initial={shouldReduce ? { opacity: 0 } : { y: '100%' }}
+              animate={shouldReduce ? { opacity: 1 } : { y: 0 }}
+              exit={shouldReduce ? { opacity: 0 } : { y: '100%' }}
+              transition={{ duration: 0.28, ease: 'easeOut' }}
+            >
+              <div className="mb-4 flex justify-end">
+                <button
+                  className="flex h-8 w-8 items-center justify-center"
+                  style={{ color: 'var(--text-secondary)', border: '2px solid var(--border-default)' }}
+                  onClick={() => setShowMobileProfile(false)}
+                  aria-label="Close profile preview"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <ProfilePreview profile={profile} />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

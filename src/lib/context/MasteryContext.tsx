@@ -5,9 +5,20 @@ import {
 } from 'react';
 import { SKILL_MASTERIES } from '@/lib/data/seed';
 import { MasteryService } from '@/lib/services/mastery';
-import type { SkillMastery, AssessmentResult } from '@/lib/types';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
+import type { SkillMastery, AssessmentResult, LearnerContext } from '@/lib/types';
 
 const STORAGE_KEY = 'nexus_mastery_state';
+
+/**
+ * Where mastery starts before anything has been assessed — the onboarding → app
+ * handoff. An onboarded learner's self-reported skills are their real starting
+ * point; the demo persona's masteries are only the fallback for someone who
+ * never onboarded, or who cleared their profile.
+ */
+function baselineMasteries(learnerContext: LearnerContext | null): SkillMastery[] {
+  return learnerContext?.masteries ?? SKILL_MASTERIES;
+}
 
 interface MasteryContextValue {
   masteries: SkillMastery[];
@@ -28,24 +39,36 @@ function parseMasteries(raw: string): SkillMastery[] {
 }
 
 export function MasteryProvider({ children }: { children: ReactNode }) {
-  const [masteries, setMasteries] = useState<SkillMastery[]>(SKILL_MASTERIES);
+  const { learnerContext } = useOnboarding();
+  // Assessment-derived state, once written, outranks every baseline. `null` means
+  // nothing has been assessed yet — which is exactly what selects the baseline below.
+  const [assessed, setAssessed] = useState<SkillMastery[] | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setMasteries(parseMasteries(raw));
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- localStorage is client-only; read after hydration so the server and first client render agree
+      if (raw) setAssessed(parseMasteries(raw));
     } catch { /* ignore */ }
     setLoaded(true);
   }, []);
 
+  // Derived, not stored: there is still exactly one mastery source in this app,
+  // and no effect is needed to react to OnboardingContext hydrating after this
+  // provider does.
+  const masteries = assessed ?? baselineMasteries(learnerContext);
+
   const applyResult = useCallback((result: AssessmentResult) => {
-    setMasteries(prev => {
-      const updated = MasteryService.applyAssessmentResult(result, prev);
+    setAssessed(prev => {
+      const updated = MasteryService.applyAssessmentResult(
+        result,
+        prev ?? baselineMasteries(learnerContext),
+      );
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(updated)); } catch { /* ignore */ }
       return updated;
     });
-  }, []);
+  }, [learnerContext]);
 
   const getMastery = useCallback((skillId: string) => {
     return masteries.find(m => m.skillId === skillId);

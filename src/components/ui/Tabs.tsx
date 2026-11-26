@@ -17,81 +17,97 @@ interface TabsProps {
   className?: string;
 }
 
+/* Counts ride on the tab as a square chip, ink-quiet when the tab is idle and
+   inverted out of the amber block when it is selected. */
+function TabBadge({ value, onAmber }: { value: number | string; onAmber: boolean }) {
+  return (
+    <span
+      className="text-[11px] px-1"
+      style={{
+        background: onAmber ? 'transparent' : 'var(--bg-elevated)',
+        border: `1px solid ${onAmber ? 'var(--ink)' : 'var(--k-edge)'}`,
+        color: onAmber ? 'var(--ink)' : 'var(--text-muted)',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {value}
+    </span>
+  );
+}
+
 export function Tabs({ tabs, active, onChange, variant = 'pill', size = 'sm', className = '' }: TabsProps) {
-  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
+  const textSize = size === 'sm' ? 'text-[11px]' : 'text-xs';
   const padding = size === 'sm' ? 'px-3 py-1.5' : 'px-4 py-2';
+  /* The display face is what makes a tab read as a printed tab rather than a link. */
+  const typeClass = 'font-bold uppercase tracking-[0.1em]';
 
   if (variant === 'underline') {
+    // The row scrolls rather than overflowing the page: four tabs ran 53px
+    // past a 390px screen. The rule sits on the inner row, which is at least
+    // full width, because a scroll container clips at its padding box and the
+    // active underline overlaps the rule by 2px.
     return (
-      <div className={`flex gap-1 border-b ${className}`} style={{ borderColor: 'var(--border-subtle)' }}>
+      <div className={`overflow-x-auto ${className}`}>
+        <div className="flex gap-1 w-max min-w-full" role="tablist" style={{ borderBottom: '2px solid var(--k-edge)' }}>
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => onChange(tab.id)}
-            className={`relative ${padding} ${textSize} font-medium transition-colors`}
-            style={{ color: active === tab.id ? 'var(--accent-violet-bright)' : 'var(--text-secondary)' }}
+            className={`relative flex-shrink-0 whitespace-nowrap ${padding} ${textSize} ${typeClass} transition-colors`}
+            style={{
+              fontFamily: 'var(--font-display)',
+              color: active === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+            }}
             role="tab"
             aria-selected={active === tab.id}
           >
             <span className="flex items-center gap-1.5">
               {tab.label}
-              {tab.badge !== undefined && (
-                <span
-                  className="text-[9px] px-1 rounded"
-                  style={{
-                    background: active === tab.id ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.06)',
-                    color: active === tab.id ? 'var(--accent-violet-bright)' : 'var(--text-muted)',
-                  }}
-                >
-                  {tab.badge}
-                </span>
-              )}
+              {tab.badge !== undefined && <TabBadge value={tab.badge} onAmber={false} />}
             </span>
             {active === tab.id && (
               <motion.div
                 layoutId="tab-underline"
-                className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                style={{ background: 'var(--accent-violet-bright)' }}
+                className="absolute -bottom-0.5 left-0 right-0"
+                style={{ height: 3, background: 'var(--amber)' }}
                 transition={{ type: 'spring', stiffness: 500, damping: 35 }}
               />
             )}
           </button>
         ))}
+        </div>
       </div>
     );
   }
 
+  // pb-1 leaves room for the selected tab's 2px offset, which the scroll
+  // container would otherwise clip.
   return (
-    <div className={`flex gap-1.5 ${className}`} role="tablist">
-      {tabs.map(tab => (
-        <button
-          key={tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`relative ${padding} ${textSize} font-medium rounded-lg transition-colors`}
-          style={{
-            background: active === tab.id ? 'var(--accent-violet)' : 'var(--bg-surface)',
-            color: active === tab.id ? 'white' : 'var(--text-secondary)',
-            border: `1px solid ${active === tab.id ? 'var(--accent-violet)' : 'var(--border-subtle)'}`,
-          }}
-          role="tab"
-          aria-selected={active === tab.id}
-        >
-          <span className="flex items-center gap-1.5">
-            {tab.label}
-            {tab.badge !== undefined && (
-              <span
-                className="text-[9px] px-1 rounded"
-                style={{
-                  background: active === tab.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)',
-                  color: active === tab.id ? 'white' : 'var(--text-muted)',
-                }}
-              >
-                {tab.badge}
-              </span>
-            )}
-          </span>
-        </button>
-      ))}
+    <div className={`flex gap-1.5 overflow-x-auto pb-1 ${className}`} role="tablist">
+      {tabs.map(tab => {
+        const selected = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            onClick={() => onChange(tab.id)}
+            className={`relative flex-shrink-0 whitespace-nowrap ${padding} ${textSize} ${typeClass} transition-colors`}
+            style={{
+              fontFamily: 'var(--font-display)',
+              background: selected ? 'var(--amber)' : 'transparent',
+              color: selected ? 'var(--ink)' : 'var(--text-secondary)',
+              border: '2px solid var(--k-edge)',
+              boxShadow: selected ? 'var(--k-shadow-sm)' : undefined,
+            }}
+            role="tab"
+            aria-selected={selected}
+          >
+            <span className="flex items-center gap-1.5">
+              {tab.label}
+              {tab.badge !== undefined && <TabBadge value={tab.badge} onAmber={selected} />}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

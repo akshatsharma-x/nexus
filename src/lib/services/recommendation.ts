@@ -14,12 +14,13 @@
 import type {
   Recommendation, SkillGap, Goal, LearnerProfile, LearnerContext,
   LearningResource, RecommendationScore, PathHealthReport, NextBestAction,
-  SkillLevel,
+  SkillLevel, LearningPath, PathNode, Skill, Project, Assessment,
 } from '../types';
 import {
-  SKILL_GAPS, RECOMMENDATIONS, ACTIVE_PATH, RESOURCES, ASSESSMENTS, ACTIVE_GOAL, SKILL_MASTERIES,
+  SKILL_GAPS, RECOMMENDATIONS, ACTIVE_PATH, ACTIVE_GOAL, SKILL_MASTERIES,
   DEMO_LEARNER_CONTEXT,
 } from '../data/seed';
+import { GapAnalysisService } from './gap-analysis';
 
 // Re-export shared types for backward-compat — pages that imported these from
 // this module continue to work without changes.
@@ -182,9 +183,148 @@ export function getPrioritizedSkillGaps(context?: LearnerContext): SkillGap[] {
   });
 }
 
+// ─── Next best move selection ────────────────────────────────────────────────
+
+/**
+ * The single highest-priority actionable item for a learner right now.
+ *
+ * Every field traces back to real data — the path node the move came from, the
+ * node's own `whyRecommended` copy, and (for resource-backed nodes) the full
+ * inspectable RecommendationScore. Nothing here is generated or templated.
+ */
+export interface NextBestMove {
+  /** Path node this move was selected from. */
+  nodeId: string;
+  /** Node type — determines which existing interaction the caller should open. */
+  kind: PathNode['type'];
+  title: string;
+  description: string;
+  /** Whichever entity the node links to. Used to route the CTA to a real target. */
+  resourceId?: string;
+  assessmentId?: string;
+  projectId?: string;
+  skillId?: string;
+  /** From the node's own committed estimate. Undefined when the node has none. */
+  estimatedMinutes?: number;
+  xpReward: number;
+  /** The node's real `whyRecommended` text — never synthesized. */
+  reason: string;
+  /** True when this move continues something already in progress. */
+  continuing: boolean;
+  /**
+   * Full per-factor breakdown from computeRecommendationScore.
+   * Present ONLY for resource-backed nodes — assessments and projects are not
+   * LearningResources, so scoring them would require inventing factors.
+   */
+  score?: RecommendationScore;
+  /** Highest goal-gap severity (0-100) among the skills this move advances. */
+  gapSeverity: number;
+}
+
+/**
+ * Select the single highest-priority actionable learning item.
+ *
+ * Candidates are drawn from the *live* path, so unlock conditions are respected
+ * automatically: only `in_progress` and `available` nodes can be selected. A node
+ * whose linked resource/project/assessment does not exist is dropped, so the
+ * returned move always has a real target to navigate to.
+ *
+ * Ranking is deterministic, most significant criterion first:
+ *   1. continue what is already started before starting something new
+ *   2. larger goal gap first — severity from GapAnalysisService.computeSkillGaps
+ *   3. higher computeRecommendationScore().totalScore first; nodes that cannot be
+ *      scored with the existing engine rank last rather than being given a
+ *      fabricated score
+ *   4. earlier path order as the final tiebreak
+ *
+ * Returns null when there is not enough information to make an honest
+ * recommendation — specifically when the goal declares no required skills
+ * (onboarding currently produces `requiredSkills: []`) or when no path node is
+ * actionable. Callers should render an empty state rather than a placeholder.
+ */
+export function selectNextBestMove(input: {
+  context: LearnerContext;
+  path: LearningPath;
+  skills: Skill[];
+  resources: LearningResource[];
+  projects: Project[];
+  assessments: Assessment[];
+}): NextBestMove | null {
+  const { context, path, skills, resources, projects, assessments } = input;
+
+  // Without goal requirements there is nothing to prioritize against, and every
+  // scoring factor that matters (goalAlignment, skillGapScore) collapses to 0.
+  if (context.goal.requiredSkills.length === 0) return null;
+
+  const gapBySkillId = new Map(
+    GapAnalysisService.computeSkillGaps(context.masteries, context.goal, skills)
+      .map(g => [g.skill.id, g.gapScore])
+  );
+  const resourceById = new Map(resources.map(r => [r.id, r]));
+  const projectIds = new Set(projects.map(p => p.id));
+  const assessmentIds = new Set(assessments.map(a => a.id));
+
+  const candidates = path.nodes
+    .filter(n => n.status === 'in_progress' || n.status === 'available')
+    .filter(n => {
+      // A move with no reachable target would produce a dead CTA.
+      if (n.resourceId) return resourceById.has(n.resourceId);
+      if (n.projectId) return projectIds.has(n.projectId);
+      if (n.assessmentId) return assessmentIds.has(n.assessmentId);
+      return true;
+    })
+    .map(node => {
+      const resource = node.resourceId ? resourceById.get(node.resourceId) : undefined;
+      const targetSkillIds = node.skillsGained.length > 0
+        ? node.skillsGained
+        : node.skillId ? [node.skillId] : [];
+      return {
+        node,
+        score: resource ? computeRecommendationScore(resource, context) : undefined,
+        gapSeverity: targetSkillIds.reduce(
+          (max, id) => Math.max(max, gapBySkillId.get(id) ?? 0), 0
+        ),
+        continuing: node.status === 'in_progress',
+      };
+    });
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    if (a.continuing !== b.continuing) return a.continuing ? -1 : 1;
+    if (b.gapSeverity !== a.gapSeverity) return b.gapSeverity - a.gapSeverity;
+    const aScore = a.score?.totalScore ?? -1;
+    const bScore = b.score?.totalScore ?? -1;
+    if (bScore !== aScore) return bScore - aScore;
+    return a.node.order - b.node.order;
+  });
+
+  const { node, score, gapSeverity, continuing } = candidates[0];
+
+  return {
+    nodeId: node.id,
+    kind: node.type,
+    title: node.title,
+    description: node.description,
+    resourceId: node.resourceId,
+    assessmentId: node.assessmentId,
+    projectId: node.projectId,
+    skillId: node.skillId,
+    estimatedMinutes: node.estimatedHours > 0 ? Math.round(node.estimatedHours * 60) : undefined,
+    xpReward: node.xpReward,
+    reason: node.whyRecommended,
+    continuing,
+    score,
+    gapSeverity,
+  };
+}
+
 /**
  * Computes the next 3 best actions for the learner right now.
- * Deterministic ordering; designed for LLM-ranking replacement.
+ *
+ * @deprecated Demo fixture only — the returned actions are hardcoded literals and
+ * ignore `_context` entirely. Use {@link selectNextBestMove}, which derives its
+ * result from the live path, real masteries and computeRecommendationScore.
  */
 export function getNextBestActions(_context?: LearnerContext): NextBestAction[] {
   return [
@@ -224,6 +364,11 @@ export function getNextBestActions(_context?: LearnerContext): NextBestAction[] 
 /**
  * Compute path health report.
  * Accepts optional context; falls back to demo path + goal for existing pages.
+ *
+ * @deprecated Reads the static ACTIVE_PATH regardless of live journey progress, and
+ * returns hardcoded `criticalBlockers` / `nextMilestone`. Use
+ * `PathAdaptationService.evaluatePathHealth(livePath, context)`, which takes the path
+ * explicitly and derives blockers and the next milestone from real node statuses.
  */
 export function getPathHealthReport(context?: LearnerContext): PathHealthReport {
   const path = ACTIVE_PATH;

@@ -1,16 +1,19 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Home, Map, Sparkles, FolderOpen, ClipboardCheck,
   MessageSquare, Dna, Briefcase, Award, Settings, UserCircle,
-  Zap, ChevronLeft, ChevronRight, X, Menu,
+  ChevronLeft, ChevronRight, X, Menu, Flame,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { CURRENT_USER, USER_PROGRESS, ACTIVE_GOAL } from '@/lib/data/seed';
+import { DEMO_LEARNER_CONTEXT } from '@/lib/data/seed';
 import { getXPProgress, formatXP } from '@/lib/utils';
+import { useJourneyProgress } from '@/lib/context/JourneyProgressContext';
+import { useOnboarding } from '@/lib/context/OnboardingContext';
 import { useSidebar } from './SidebarContext';
 import { Tooltip } from '@/components/ui/Tooltip';
 
@@ -48,37 +51,71 @@ function NavItem({
   onClick?: () => void;
 }) {
   const Icon = item.icon;
+  const prefersReducedMotion = useReducedMotion();
 
   const inner = (
-    <Link href={item.href} onClick={onClick}>
+    // Name and current-page state belong to the link itself: on the inner div,
+    // aria-current was attached to a generic element, which is not what a
+    // screen reader announces as "current page" when it reaches the link.
+    <Link
+      href={item.href}
+      onClick={onClick}
+      aria-label={item.label}
+      aria-current={isActive ? 'page' : undefined}
+    >
       <motion.div
-        className="relative flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer group/nav"
+        className="relative flex items-center gap-2.5 px-3 py-2 cursor-pointer group/nav"
         style={{
-          background: isActive ? 'rgba(124, 58, 237, 0.15)' : 'transparent',
-          color: isActive ? 'var(--accent-violet-bright)' : 'var(--text-secondary)',
+          // The active item's surface is the shared layout element below, not
+          // this background — otherwise the two would cross-fade against each
+          // other while the marker is travelling between items.
+          //
+          // --frame-hover-off, not `transparent`: this is the resting end of
+          // the hover animation below, and Motion cannot tween out of a
+          // keyword. Both are invisible; only one can be animated from.
+          background: 'var(--frame-hover-off)',
+          color: isActive ? 'var(--ink)' : 'var(--text-secondary)',
           justifyContent: isCollapsed ? 'center' : undefined,
         }}
-        whileHover={{
-          background: isActive ? 'rgba(124, 58, 237, 0.2)' : 'rgba(255,255,255,0.05)',
-          color: isActive ? 'var(--accent-violet-bright)' : 'var(--text-primary)',
-        }}
+        whileHover={
+          isActive
+            ? { color: 'var(--ink)' }
+            : { background: 'var(--frame-hover)', color: 'var(--text-primary)' }
+        }
         transition={{ duration: 0.15 }}
-        aria-label={item.label}
-        aria-current={isActive ? 'page' : undefined}
       >
         {isActive && (
-          <motion.div
+          <motion.span
             layoutId="sidebar-active-indicator"
-            className="absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
-            style={{ background: 'var(--accent-violet-bright)' }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            aria-hidden="true"
+            className="absolute inset-0"
+            style={{
+              // A printed amber block, not a lit wash: the marker is the one
+              // solid area of accent in the rail, so it carries ink type rather
+              // than a coloured edge.
+              background: 'var(--amber)',
+              border: '2px solid var(--k-edge)',
+            }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { type: 'spring', stiffness: 460, damping: 36 }
+            }
           />
         )}
-        <Icon size={15} className="flex-shrink-0" />
+        {/* The marker is absolutely positioned and therefore paints after the
+            in-flow icon and label; both are promoted so they stay in front of
+            it rather than behind. */}
+        <Icon size={15} className="relative flex-shrink-0" />
         <AnimatePresence initial={false}>
           {!isCollapsed && (
             <motion.span
-              className="text-xs font-medium whitespace-nowrap overflow-hidden"
+              className="relative text-[11px] uppercase whitespace-nowrap overflow-hidden"
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 700,
+                letterSpacing: '0.1em',
+              }}
               initial={{ opacity: 0, width: 0 }}
               animate={{ opacity: 1, width: 'auto' }}
               exit={{ opacity: 0, width: 0 }}
@@ -90,11 +127,8 @@ function NavItem({
         </AnimatePresence>
         {item.badge && !isCollapsed && (
           <div
-            className="ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
-            style={{
-              background: 'var(--accent-green)',
-              boxShadow: '0 0 6px var(--accent-green-glow)',
-            }}
+            className="relative ml-auto w-1.5 h-1.5 rounded-full flex-shrink-0"
+            style={{ background: isActive ? 'var(--ink)' : 'var(--accent-green)' }}
           />
         )}
       </motion.div>
@@ -115,17 +149,86 @@ function NavItem({
 export function Sidebar() {
   const pathname = usePathname();
   const { collapsed, mobileOpen, isMobile, toggle, closeMobile } = useSidebar();
+  const { progressPercent } = useJourneyProgress();
+  const { learnerContext } = useOnboarding();
   const prefersReducedMotion = useReducedMotion();
 
-  const xpProgress = getXPProgress(USER_PROGRESS.totalXP);
   const isExpanded = isMobile ? mobileOpen : !collapsed;
   const sidebarWidth = isExpanded ? SIDEBAR_EXPANDED : SIDEBAR_COLLAPSED;
+  const asideRef = useRef<HTMLElement>(null);
+  const drawerOpen = isMobile && mobileOpen;
 
-  const targetDateStr = ACTIVE_GOAL.targetDate
-    ? ACTIVE_GOAL.targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-    : 'In Progress';
+  // The mobile drawer is modal in effect — it covers the page behind a scrim —
+  // so it behaves like one from the keyboard: focus moves in to the current
+  // page's link when it opens, Escape closes it, and focus goes back to
+  // whatever opened it when it closes.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const aside = asideRef.current;
+    // preventScroll: the drawer is still off-screen when this runs, and
+    // focus() would otherwise scroll its overflow-hidden column mid-slide.
+    (aside?.querySelector<HTMLElement>('a[aria-current="page"]') ?? aside?.querySelector<HTMLElement>('a[href]'))
+      ?.focus({ preventScroll: true });
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeMobile();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      opener?.focus();
+    };
+  }, [drawerOpen, closeMobile]);
 
-  const goalProgress = ACTIVE_GOAL.progressPercent ?? 31;
+  // Deliberately the same two lines the pages use — learner context if
+  // onboarding has run, demo context before that, then role over goal title —
+  // so the rail cannot name the goal differently from the page beside it.
+  // `learnerContext` is null until an effect reads localStorage, so the first
+  // client render matches the server's.
+  const liveContext = learnerContext ?? DEMO_LEARNER_CONTEXT;
+  const goal = liveContext.goal;
+
+  // ── Learner metadata ───────────────────────────────────────────────────────
+  // The same context the pages read, so the rail cannot claim a different level
+  // or streak from the hero beside it. Previously these three lines came from the
+  // seed's `CURRENT_USER` / `USER_PROGRESS` directly, which left an onboarded
+  // learner reading "Level 12 · 23-day streak" next to a hero saying "Level 1".
+  //
+  // Everything below arrives via localStorage, which is user-editable, so a value
+  // that is not a usable number is treated as absent rather than propagated into
+  // arithmetic — a NaN would reach the bar as `width: "NaN%"`.
+  const asCount = (value: number): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+
+  const userName = liveContext.user.name.trim() || 'Learner';
+  const userInitial = userName.charAt(0).toUpperCase();
+  const level = asCount(liveContext.progress.level);
+  const streakDays = asCount(liveContext.user.streakDays);
+
+  // The bar measures progress *within* the current level, so it needs XP to
+  // measure — at zero there is no band to fill and no figure worth a row, which
+  // is the same rule the hero applies to its own XP entry. Home shows the
+  // lifetime total; this shows how far through the level that total is. One
+  // field, two readings, and now one source.
+  const totalXP = asCount(liveContext.progress.totalXP);
+  const xpProgress = totalXP > 0 ? getXPProgress(totalXP) : null;
+  const goalLabel = liveContext.profile.targetRole || goal.title;
+  // The date is typed as a Date but arrives via localStorage, where only values
+  // that still look like ISO strings get revived — anything else reaches here as
+  // a string, and calling a Date method on it would take the whole frame down
+  // rather than just this line.
+  const targetDate =
+    goal.targetDate instanceof Date && !Number.isNaN(goal.targetDate.getTime())
+      ? goal.targetDate
+      : null;
+  const targetDateStr = targetDate
+    ? targetDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    : 'No target date';
+
+  // Progress is read from the journey, which is the only thing that actually
+  // advances it. `ACTIVE_GOAL.progressPercent` is a frozen 31 in the seed and
+  // would sit in the rail contradicting the step count on the page.
+  const goalProgress = progressPercent;
   const transitionDuration = prefersReducedMotion ? 0 : 0.25;
 
   return (
@@ -135,7 +238,7 @@ export function Sidebar() {
         {isMobile && mobileOpen && (
           <motion.div
             className="fixed inset-0 z-30"
-            style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            style={{ background: 'rgba(0,0,0,0.7)' }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -147,7 +250,13 @@ export function Sidebar() {
       </AnimatePresence>
 
       {/* Sidebar */}
+      {/* inert while the mobile drawer is closed: it slides off-screen but
+          would otherwise stay in the tab order and the accessibility tree,
+          so keyboard users tabbed through a column of invisible links. */}
       <motion.aside
+        ref={asideRef}
+        id="primary-navigation"
+        inert={isMobile && !mobileOpen}
         className="fixed left-0 top-0 h-screen flex flex-col z-40 overflow-hidden"
         animate={{
           width: sidebarWidth,
@@ -155,8 +264,12 @@ export function Sidebar() {
         }}
         transition={{ duration: transitionDuration, ease: [0.4, 0, 0.2, 1] }}
         style={{
-          background: 'var(--bg-surface)',
-          borderRight: '1px solid var(--border-subtle)',
+          // Deeper than the canvas, so the separation comes from the rail
+          // receding rather than from a lighter panel sitting on top. The edge
+          // is a hard 2px rule instead of a lit hairline — the rail is a cut
+          // block, and nothing in this language fades.
+          background: 'var(--frame-rail)',
+          borderRight: '2px solid var(--k-edge)',
         }}
         aria-label="Primary navigation"
       >
@@ -169,15 +282,12 @@ export function Sidebar() {
           }}
         >
           <div className="flex items-center gap-2.5 min-w-0">
-            {/* Logo mark */}
-            <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 relative"
-              style={{
-                background: 'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)',
-                boxShadow: '0 0 16px var(--accent-violet-glow)',
-              }}
-            >
-              <Zap size={16} className="text-white" />
+            {/* The wordmark is a printed block: the initial set in the display
+                face on a solid amber square, which is the same object the active
+                nav marker is — the rail has one accent colour and two uses
+                for it. */}
+            <div className="k-mark" style={{ width: 32, height: 32, fontSize: 15 }} aria-hidden="true">
+              N
             </div>
             <AnimatePresence initial={false}>
               {isExpanded && (
@@ -189,14 +299,22 @@ export function Sidebar() {
                   className="overflow-hidden"
                 >
                   <div
-                    className="text-sm font-bold tracking-wide whitespace-nowrap"
-                    style={{ color: 'var(--text-primary)' }}
+                    className="text-sm whitespace-nowrap uppercase"
+                    style={{
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 800,
+                      color: 'var(--text-primary)',
+                      letterSpacing: '0.16em',
+                    }}
                   >
                     NEXUS
                   </div>
+                  {/* Kept in title case rather than promoted to the tracked
+                      uppercase label: uppercase with label tracking, this string
+                      is wider than the 220px rail leaves for it. */}
                   <div
-                    className="text-[10px] whitespace-nowrap"
-                    style={{ color: 'var(--text-muted)' }}
+                    className="text-[11px] whitespace-nowrap mt-px"
+                    style={{ color: 'var(--text-muted)', letterSpacing: '0.02em' }}
                   >
                     Learning Intelligence
                   </div>
@@ -214,11 +332,11 @@ export function Sidebar() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={closeMobile}
-                  className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                  className="w-6 h-6 flex items-center justify-center flex-shrink-0"
                   style={{
-                    background: 'var(--bg-elevated)',
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--frame-well)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--k-edge)',
                   }}
                   aria-label="Close navigation"
                 >
@@ -234,11 +352,11 @@ export function Sidebar() {
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   onClick={toggle}
-                  className="w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0"
+                  className="w-6 h-6 flex items-center justify-center flex-shrink-0"
                   style={{
-                    background: 'var(--bg-elevated)',
-                    color: 'var(--text-muted)',
-                    border: '1px solid var(--border-subtle)',
+                    background: 'var(--frame-well)',
+                    color: 'var(--text-secondary)',
+                    border: '1px solid var(--k-edge)',
                   }}
                   aria-label="Collapse sidebar"
                 >
@@ -253,11 +371,11 @@ export function Sidebar() {
             <Tooltip content="Expand sidebar" side="right">
               <button
                 onClick={toggle}
-                className="w-6 h-6 rounded-md flex items-center justify-center"
+                className="w-6 h-6 flex items-center justify-center"
                 style={{
-                  background: 'var(--bg-elevated)',
-                  color: 'var(--text-muted)',
-                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--frame-well)',
+                  color: 'var(--text-secondary)',
+                  border: '1px solid var(--k-edge)',
                 }}
                 aria-label="Expand sidebar"
               >
@@ -278,70 +396,91 @@ export function Sidebar() {
               className="overflow-hidden px-3 mb-2"
             >
               <div
-                className="p-3 rounded-xl"
+                className="p-3"
                 style={{
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--frame-well)',
+                  border: '1px solid var(--k-edge)',
                 }}
               >
-                <div className="flex items-center gap-2.5 mb-2.5">
+                {/* The gap below belongs to whatever follows — with no XP and no
+                    streak there is nothing to separate from. */}
+                <div
+                  className={`flex items-center gap-2.5${xpProgress || streakDays > 0 ? ' mb-3' : ''}`}
+                >
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0"
+                    className="w-8 h-8 flex items-center justify-center text-sm flex-shrink-0"
                     style={{
-                      background: 'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)',
-                      color: 'white',
+                      background: 'var(--frame-rail)',
+                      border: '2px solid var(--k-edge)',
+                      color: 'var(--text-primary)',
+                      fontFamily: 'var(--font-display)',
+                      fontWeight: 800,
                     }}
                   >
-                    {CURRENT_USER.name.charAt(0)}
+                    {userInitial}
                   </div>
                   <div className="min-w-0">
                     <div
                       className="text-xs font-semibold truncate"
                       style={{ color: 'var(--text-primary)' }}
                     >
-                      {CURRENT_USER.name}
+                      {userName}
                     </div>
-                    <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                      Level {xpProgress.level} Learner
-                    </div>
+                    {/* A learner always has a level — the line is dropped only if
+                        a stored context somehow carries none. */}
+                    {level > 0 && (
+                      <div
+                        className="text-[11px] uppercase"
+                        style={{
+                          color: 'var(--text-tertiary)',
+                          fontFamily: 'var(--font-display)',
+                          letterSpacing: '0.08em',
+                        }}
+                      >
+                        Level {level} Learner
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* XP bar */}
-                <div className="space-y-1">
-                  <div
-                    className="flex justify-between text-[10px]"
-                    style={{ color: 'var(--text-muted)' }}
-                  >
-                    <span>Lv {xpProgress.level}</span>
-                    <span>
-                      {formatXP(xpProgress.current)} / {formatXP(xpProgress.required)} XP
+                {/* XP bar — only once there is XP to measure. */}
+                {xpProgress && (
+                  <div className="space-y-1.5">
+                    <div
+                      className="flex justify-between items-baseline text-[11px]"
+                      style={{ color: 'var(--text-tertiary)' }}
+                    >
+                      <span className="k-label">XP</span>
+                      <span className="k-figure text-[11px]">
+                        {formatXP(xpProgress.current)} / {formatXP(xpProgress.required)}
+                      </span>
+                    </div>
+                    {/* The meter primitive, but the fill is animated by motion —
+                        so it must not also carry .k-meter-fill's CSS transition,
+                        or the two would fight over the same property. */}
+                    <div className="k-meter">
+                      <motion.div
+                        className="h-full"
+                        style={{ background: 'var(--amber)' }}
+                        initial={{ width: 0 }}
+                        animate={{ width: `${xpProgress.percent}%` }}
+                        transition={{ duration: prefersReducedMotion ? 0 : 1, delay: prefersReducedMotion ? 0 : 0.5, ease: 'easeOut' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Streak — day one has none, and "0-day streak" is not a fact. */}
+                {streakDays > 0 && (
+                  <div className="mt-2.5 flex items-center gap-1.5">
+                    {/* --accent-amber, not --amber: ink rather than a block, and
+                        plain --amber is 1.8:1 against cream. */}
+                    <Flame size={11} style={{ color: 'var(--accent-amber)' }} aria-hidden="true" />
+                    <span className="text-[11px] font-medium" style={{ color: 'var(--accent-amber)' }}>
+                      {streakDays}-day streak
                     </span>
                   </div>
-                  <div
-                    className="h-1 rounded-full overflow-hidden"
-                    style={{ background: 'var(--bg-overlay)' }}
-                  >
-                    <motion.div
-                      className="h-full rounded-full"
-                      style={{
-                        background:
-                          'linear-gradient(90deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)',
-                      }}
-                      initial={{ width: 0 }}
-                      animate={{ width: `${xpProgress.percent}%` }}
-                      transition={{ duration: 1, delay: 0.5, ease: 'easeOut' }}
-                    />
-                  </div>
-                </div>
-
-                {/* Streak */}
-                <div className="mt-2 flex items-center gap-1.5">
-                  <span className="text-xs" aria-hidden="true">🔥</span>
-                  <span className="text-[10px] font-medium" style={{ color: 'var(--accent-amber)' }}>
-                    {CURRENT_USER.streakDays}-day streak
-                  </span>
-                </div>
+                )}
               </div>
             </motion.div>
           )}
@@ -350,16 +489,18 @@ export function Sidebar() {
         {/* Avatar — collapsed only */}
         {!isExpanded && !isMobile && (
           <div className="px-3 mb-2 flex justify-center">
-            <Tooltip content={CURRENT_USER.name} side="right">
+            <Tooltip content={userName} side="right">
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold"
+                className="w-8 h-8 flex items-center justify-center text-sm"
                 style={{
-                  background:
-                    'linear-gradient(135deg, var(--accent-violet) 0%, var(--accent-cyan) 100%)',
-                  color: 'white',
+                  background: 'var(--frame-rail)',
+                  border: '2px solid var(--k-edge)',
+                  color: 'var(--text-primary)',
+                  fontFamily: 'var(--font-display)',
+                  fontWeight: 800,
                 }}
               >
-                {CURRENT_USER.name.charAt(0)}
+                {userInitial}
               </div>
             </Tooltip>
           </div>
@@ -381,11 +522,7 @@ export function Sidebar() {
           ))}
 
           {/* Divider */}
-          <div
-            className="my-1.5 mx-1"
-            style={{ height: '1px', background: 'var(--border-subtle)' }}
-            role="separator"
-          />
+          <div className="k-rule-thin my-1.5 mx-1" role="separator" />
 
           <NavItem
             item={{ href: '/onboarding', label: 'Setup Profile', icon: UserCircle }}
@@ -413,50 +550,48 @@ export function Sidebar() {
               className="px-3 pb-4 overflow-hidden"
             >
               <div
-                className="p-2.5 rounded-lg"
+                className="p-3"
                 style={{
-                  background: 'var(--bg-elevated)',
-                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--frame-well)',
+                  border: '1px solid var(--k-edge)',
                 }}
               >
-                <div className="flex items-center gap-2 mb-1.5">
+                <div className="flex items-center gap-2 mb-2">
                   <div
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{
-                      background: 'var(--accent-green)',
-                      boxShadow: '0 0 6px var(--accent-green-glow)',
-                    }}
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ background: 'var(--accent-green)' }}
+                    aria-hidden="true"
                   />
-                  <span
-                    className="text-[10px] font-medium"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    Goal Progress
-                  </span>
-                </div>
-                <div className="text-[10px] mb-1.5 truncate" style={{ color: 'var(--text-muted)' }}>
-                  ML Engineer Transition
+                  <span className="k-label">Goal</span>
                 </div>
                 <div
-                  className="h-1 rounded-full overflow-hidden"
-                  style={{ background: 'var(--bg-overlay)' }}
+                  className="text-[11px] font-medium mb-2 truncate"
+                  style={{ color: 'var(--text-secondary)' }}
+                  title={goalLabel}
                 >
+                  {goalLabel}
+                </div>
+                {/* Same arrangement as the XP meter above: the primitive's track,
+                    a motion-driven fill with no competing CSS transition. */}
+                <div className="k-meter">
                   <motion.div
-                    className="h-full rounded-full"
-                    style={{
-                      background:
-                        'linear-gradient(90deg, var(--accent-green) 0%, var(--accent-cyan) 100%)',
-                    }}
+                    className="h-full"
+                    style={{ background: 'var(--amber)' }}
                     initial={{ width: 0 }}
                     animate={{ width: `${goalProgress}%` }}
-                    transition={{ duration: 1.2, delay: 0.8, ease: 'easeOut' }}
+                    transition={{
+                      duration: prefersReducedMotion ? 0 : 1.2,
+                      delay: prefersReducedMotion ? 0 : 0.8,
+                      ease: 'easeOut',
+                    }}
                   />
                 </div>
-                <div className="flex justify-between mt-1">
-                  <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
-                    {goalProgress}% complete
+                <div className="flex justify-between items-baseline mt-1.5">
+                  {/* --accent-amber, not --amber: a figure is ink. */}
+                  <span className="k-figure text-[11px]" style={{ color: 'var(--accent-amber)' }}>
+                    {goalProgress}%
                   </span>
-                  <span className="text-[9px]" style={{ color: 'var(--text-muted)' }}>
+                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
                     {targetDateStr}
                   </span>
                 </div>
@@ -471,14 +606,16 @@ export function Sidebar() {
 
 // Exported for use in TopBar (hamburger button)
 export function MobileMenuButton() {
-  const { openMobile } = useSidebar();
+  const { openMobile, mobileOpen } = useSidebar();
   return (
     <button
       onClick={openMobile}
-      className="w-8 h-8 flex items-center justify-center rounded-lg"
+      aria-expanded={mobileOpen}
+      aria-controls="primary-navigation"
+      className="w-8 h-8 flex items-center justify-center"
       style={{
-        background: 'var(--bg-elevated)',
-        border: '1px solid var(--border-subtle)',
+        background: 'var(--frame-well)',
+        border: '2px solid var(--k-edge)',
         color: 'var(--text-secondary)',
       }}
       aria-label="Open navigation"

@@ -1,8 +1,8 @@
 import type {
   User, LearnerProfile, Skill, SkillMastery, Goal, LearningResource,
-  Course, Project, Assessment, LearningPath, PathNode, Progress,
-  Recommendation, WeeklyActivity, Milestone, Badge, VerifiedSkill,
-  SkillPassport, CareerRole, SkillGap, AIMessage,
+  Project, Assessment, LearningPath, Progress,
+  Recommendation, WeeklyActivity, Milestone, Badge,
+  SkillPassport, CareerRole, SkillGap,
   LearningBehavior, LearnerContext
 } from '../types';
 
@@ -650,21 +650,6 @@ export const SKILL_PASSPORT: SkillPassport = {
   summary: 'Experienced frontend engineer with expert-level JavaScript and React skills, actively transitioning to ML Engineering with growing Python and data science capabilities.',
   shareUrl: 'https://nexus.ai/passport/akshat-sharma-2024',
 };
-
-// ─── Initial AI Messages ──────────────────────────────────────────────────────
-export const INITIAL_AI_MESSAGES: AIMessage[] = [
-  {
-    id: 'msg_welcome',
-    role: 'assistant',
-    content: `Hi Akshat! I'm your NEXUS AI Tutor. I have full context of your learning profile and current path.
-
-You're 28% through your ML Engineer transition, with a 23-day streak — solid momentum. Right now your most impactful next move is **closing the Pandas gap** (currently Novice → need Intermediate), since it's blocking the EDA Project which is on your critical path to ML Fundamentals.
-
-What would you like to explore today?`,
-    timestamp: new Date(Date.now() - 30 * 60 * 1000),
-    skillRefs: ['sk_pandas'],
-  },
-];
 
 // ─── Learning Behavior ────────────────────────────────────────────────────────
 // Akshat's observed behavioral metrics, derived from session history.

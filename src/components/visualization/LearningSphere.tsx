@@ -20,14 +20,15 @@ const SphereSceneComponent = dynamic<SphereSceneProps>(
 
 function SpherePlaceholder() {
   return (
-    <div className="w-full h-full flex items-center justify-center">
-      <div
-        className="w-52 h-52 rounded-full"
-        style={{
-          background: 'radial-gradient(circle at 40% 35%, rgba(124,58,237,0.12), rgba(6,182,212,0.04) 60%, transparent)',
-          animation: 'pulse 2s cubic-bezier(0.4,0,0.6,1) infinite',
-        }}
-      />
+    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
+      <div className="k-panel-flat w-12 h-12 flex items-center justify-center">
+        {/* Genuine loading indicator, so the repeat is kept; the global
+            reduced-motion rule stops it for users who ask. */}
+        <div className="w-3 h-3 animate-pulse" style={{ background: 'var(--amber)' }} />
+      </div>
+      <span className="k-label" style={{ color: 'var(--text-secondary)' }}>
+        Loading map
+      </span>
     </div>
   );
 }
@@ -42,18 +43,22 @@ const MASTERY_LABEL: Record<SphereSkill['mastery'], string> = {
   locked:     'Not started',
 };
 
+// Text colours for the chrome, not swatches: --text-muted is a dot colour in the
+// legend but fails as 11px type on the near-black chip, so locked reads secondary.
 const MASTERY_COLOR: Record<SphereSkill['mastery'], string> = {
   mastered:   'var(--accent-green)',
   strong:     'var(--accent-violet-bright)',
   developing: 'var(--accent-cyan)',
   weak:       'var(--accent-amber)',
-  locked:     'var(--text-muted)',
+  locked:     'rgba(242, 239, 233, 0.62)',
 };
 
 interface TooltipState {
   skill: SphereSkill;
   x: number;
   y: number;
+  /** Container width when the pointer moved, for keeping the tooltip inside. */
+  frameWidth: number;
 }
 
 // ─── LearningSphere ───────────────────────────────────────────────────────────
@@ -80,7 +85,9 @@ export function LearningSphere({
     screenY: number,
   ) => {
     if (skill) {
-      setTooltip({ skill, x: screenX, y: screenY });
+      // Measured here, in the event, rather than read off the ref during
+      // render, where it is not reactive and the compiler rejects it.
+      setTooltip({ skill, x: screenX, y: screenY, frameWidth: containerRef.current?.offsetWidth ?? 400 });
     } else {
       setTooltip(null);
     }
@@ -147,21 +154,20 @@ export function LearningSphere({
               textAlign: 'center',
             }}
           >
-            <div style={{
+            {/* The chip is a plate on the instrument, not a sheet of stock, so
+                it keeps the room's palette in literal values: the sphere may be
+                dropped into either surface scope and this must stay legible on
+                the dark canvas underneath it either way. */}
+            <div className="k-panel-flat" style={{
               display: 'inline-block',
-              background: 'rgba(8, 8, 15, 0.86)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              borderRadius: 7,
-              padding: '4px 9px',
-              backdropFilter: 'blur(6px)',
-              WebkitBackdropFilter: 'blur(6px)',
-              boxShadow: '0 2px 12px rgba(0,0,0,0.55)',
+              background: 'rgba(8, 8, 15, 0.88)',
+              padding: '4px 8px',
               lineHeight: 1,
             }}>
-              <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-primary)', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: 'var(--paper)', whiteSpace: 'nowrap', letterSpacing: '0.01em' }}>
                 {label.name}
               </div>
-              <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.07em', marginTop: 3, color: MASTERY_COLOR[label.mastery], whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
+              <div className="k-label" style={{ marginTop: 4, color: MASTERY_COLOR[label.mastery], whiteSpace: 'nowrap' }}>
                 {MASTERY_LABEL[label.mastery]}
               </div>
             </div>
@@ -169,7 +175,7 @@ export function LearningSphere({
             <div style={{
               width: 1,
               height: 6,
-              background: 'rgba(255,255,255,0.18)',
+              background: 'rgba(242, 239, 233, 0.28)',
               margin: '0 auto',
             }} />
           </motion.div>
@@ -180,27 +186,26 @@ export function LearningSphere({
       {tooltip && (
         <div
           aria-hidden="true"
+          className="k-panel"
           style={{
             position: 'absolute',
-            left: Math.min(tooltip.x + 14, (containerRef.current?.offsetWidth ?? 400) - 130),
+            left: Math.min(tooltip.x + 14, tooltip.frameWidth - 130),
             top: Math.max(tooltip.y - 36, 8),
             pointerEvents: 'none',
             zIndex: 20,
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 8,
+            background: 'rgba(8, 8, 15, 0.92)',
             padding: '6px 10px',
             minWidth: 110,
           }}
         >
           <div
-            className="text-[12px] font-medium leading-snug"
-            style={{ color: 'var(--text-primary)' }}
+            className="text-[12px] leading-snug"
+            style={{ fontFamily: 'var(--font-display)', fontWeight: 700, color: 'var(--paper)' }}
           >
             {tooltip.skill.name}
           </div>
           <div
-            className="text-[10px] mt-0.5"
+            className="k-label mt-1"
             style={{ color: MASTERY_COLOR[tooltip.skill.mastery] }}
           >
             {MASTERY_LABEL[tooltip.skill.mastery]}

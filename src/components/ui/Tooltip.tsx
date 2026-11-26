@@ -52,12 +52,12 @@ export function Tooltip({ content, side = 'top', children, delayMs = 120 }: Tool
             role="tooltip"
           >
             <div
-              className="px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap"
+              className="k-label px-2 py-1 whitespace-nowrap"
               style={{
                 background: 'var(--bg-overlay)',
-                border: '1px solid var(--border-default)',
+                border: '2px solid var(--k-edge)',
+                boxShadow: 'var(--k-shadow-sm)',
                 color: 'var(--text-primary)',
-                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
               }}
             >
               {content}

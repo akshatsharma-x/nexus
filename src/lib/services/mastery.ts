@@ -21,21 +21,32 @@ const LEVEL_SCORE: Record<SkillLevel, number> = {
   novice: 0, beginner: 20, intermediate: 50, advanced: 75, expert: 90, master: 100,
 };
 
+function levelForScore(score: number): SkillLevel {
+  for (const [threshold, level] of LEVEL_THRESHOLDS) {
+    if (score >= threshold) return level;
+  }
+  return 'novice';
+}
+
 export const MasteryService = {
   /**
    * Convert a numeric score (0-100) to the corresponding SkillLevel.
    */
   computeLevel(score: number): SkillLevel {
-    for (const [threshold, level] of LEVEL_THRESHOLDS) {
-      if (score >= threshold) return level;
-    }
-    return 'novice';
+    return levelForScore(score);
   },
 
   /**
    * Apply an assessment result to a mastery array and return the updated copy.
    * Creates a new mastery entry if the skill was not previously tracked.
    * Does NOT mutate the input array.
+   *
+   * `score` is the accumulated quantity — one sitting moves it by at most the
+   * delta the assessment service allows. `level` is only that score's band, so
+   * it is recomputed here rather than taken from `update.newLevel`, which is
+   * this single sitting's percentage and would let five easy questions declare
+   * mastery while the score still read 28. The level a learner is credited with
+   * and the score shown next to it are then always the same fact.
    */
   applyAssessmentResult(
     result: AssessmentResult,
@@ -61,7 +72,7 @@ export const MasteryService = {
         updated[idx] = {
           ...prev,
           score: newScore,
-          level: update.newLevel,
+          level: levelForScore(newScore),
           trending: update.scoreDelta > 0 ? 'up' : update.scoreDelta < 0 ? 'down' : 'stable',
           assessedAt: now,
           lastPracticed: now,
@@ -69,10 +80,11 @@ export const MasteryService = {
           evidence: [...prev.evidence, newEvidence],
         };
       } else {
+        const initialScore = Math.max(0, update.scoreDelta);
         updated.push({
           skillId: update.skillId,
-          level: update.newLevel,
-          score: Math.max(0, update.scoreDelta),
+          level: levelForScore(initialScore),
+          score: initialScore,
           evidence: [newEvidence],
           lastPracticed: now,
           assessedAt: now,

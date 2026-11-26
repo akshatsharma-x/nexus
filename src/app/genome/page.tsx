@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
-  BarChart, Bar, XAxis, YAxis, Tooltip, Cell
+  BarChart, Bar, XAxis, YAxis, Tooltip
 } from 'recharts';
 import { LEARNER_PROFILE, CURRENT_USER, USER_PROGRESS } from '@/lib/data/seed';
 
@@ -16,12 +16,14 @@ const RADAR_DATA = [
   { subject: 'Application', value: 65 },
 ];
 
+// Hours is one measure, so the bars are one hue and the category is carried by
+// the axis label — a colour per bar would encode nothing the axis does not.
 const CATEGORY_DATA = [
-  { name: 'Programming', hours: 68, color: '#3b82f6' },
-  { name: 'ML/AI', hours: 24, color: '#8b5cf6' },
-  { name: 'Mathematics', hours: 32, color: '#f43f5e' },
-  { name: 'Data', hours: 18, color: '#06b6d4' },
-  { name: 'Frontend', hours: 45, color: '#f59e0b' },
+  { name: 'Programming', hours: 68 },
+  { name: 'ML/AI', hours: 24 },
+  { name: 'Mathematics', hours: 32 },
+  { name: 'Data', hours: 18 },
+  { name: 'Frontend', hours: 45 },
 ];
 
 const LEARNING_TRAITS = [
@@ -33,159 +35,154 @@ const LEARNING_TRAITS = [
   { label: 'Complexity seeker', score: 60, description: 'Comfortable with challenging material' },
 ];
 
+/** Tooltip and axis chrome for a chart printed on stock rather than lit on dark. */
+const TOOLTIP_STYLE = {
+  background: 'var(--bg-surface)',
+  border: '2px solid var(--text-primary)',
+  color: 'var(--text-primary)',
+  fontSize: '12px',
+} as const;
+
+const AXIS_TICK = { fill: 'var(--text-tertiary)', fontSize: 11 } as const;
+
 export default function GenomePage() {
   const completionRate = Math.round(LEARNER_PROFILE.completionRate * 100);
   const velocity = LEARNER_PROFILE.learningVelocity;
 
+  const summary = [
+    { label: 'Avg velocity', value: `${velocity}×` },
+    { label: 'Completion rate', value: `${completionRate}%` },
+    { label: 'Avg session', value: '47m' },
+    { label: 'Assessment avg', value: '84%' },
+  ];
+
   return (
     <div className="max-w-5xl">
 
-      {/* ── Header ───────────────────────────────────────────────────────── */}
-      <div className="mb-10">
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-3"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Learning Genome
-        </div>
-        <h1 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)', lineHeight: 1.2 }}>
-          {CURRENT_USER.name}&apos;s learning profile.
-        </h1>
-        <p className="text-sm mb-5" style={{ color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: 520 }}>
-          Derived from {USER_PROGRESS.totalHoursLearned}h of learning activity,{' '}
+      {/* ── Header — sits directly on the dark room ──────────────────────── */}
+      <div className="mb-8">
+        <div className="k-slug mb-3">Learning Genome</div>
+        <h1 className="k-display mb-4">{CURRENT_USER.name}</h1>
+        <p className="nx-support" style={{ maxWidth: 520 }}>
+          Learning profile derived from {USER_PROGRESS.totalHoursLearned}h of learning activity,{' '}
           {USER_PROGRESS.assessmentsPassed} assessments, and behavioral patterns.
           Used to personalize your path and pacing.
         </p>
-        <div className="flex gap-6 text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          <span>
-            <span className="font-semibold" style={{ color: 'var(--accent-violet-bright)' }}>{velocity}×</span> avg velocity
-          </span>
-          <span>
-            <span className="font-semibold" style={{ color: 'var(--accent-green)' }}>{completionRate}%</span> completion rate
-          </span>
-          <span>
-            <span className="font-semibold" style={{ color: 'var(--accent-cyan)' }}>47m</span> avg session
-          </span>
-          <span>
-            <span className="font-semibold" style={{ color: 'var(--accent-amber)' }}>84%</span> assessment avg
-          </span>
-        </div>
       </div>
 
-      {/* ── Charts row ───────────────────────────────────────────────────── */}
-      <div
-        className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 pb-10"
-        style={{ borderBottom: '1px solid var(--border-subtle)' }}
-      >
-        {/* Radar */}
-        <div>
-          <div
-            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Learning dimensions
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <RadarChart data={RADAR_DATA} margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-              <PolarGrid stroke="rgba(255,255,255,0.06)" />
-              <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-              <Radar
-                name="You"
-                dataKey="value"
-                stroke="var(--accent-violet-bright)"
-                fill="var(--accent-violet)"
-                fillOpacity={0.18}
-                strokeWidth={1.5}
-              />
-            </RadarChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="grid grid-cols-1 gap-5">
 
-        {/* Bar */}
-        <div>
-          <div
-            className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            Hours by category
-          </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={CATEGORY_DATA} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-              <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 9 }} axisLine={false} tickLine={false} />
-              <Tooltip
-                contentStyle={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '11px' }}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
-              />
-              <Bar dataKey="hours" radius={[3, 3, 0, 0]}>
-                {CATEGORY_DATA.map(entry => (
-                  <Cell key={entry.name} fill={entry.color} fillOpacity={0.8} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* ── Learning traits ──────────────────────────────────────────────── */}
-      <div className="mb-10 pb-10" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-6"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Learning traits
-        </div>
-        <div className="space-y-4">
-          {LEARNING_TRAITS.map(({ label, score, description }, i) => (
-            <motion.div
-              key={label}
-              initial={{ opacity: 0, x: -8 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.06 + 0.2 }}
-            >
-              <div className="flex items-center justify-between mb-1.5">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{label}</span>
-                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{description}</span>
-                </div>
-                <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--accent-violet-bright)' }}>
-                  {score}%
-                </span>
+        {/* ── Summary figures — the one primary object on this view ─────── */}
+        <div className="k-paper k-panel-hero p-5">
+          <div className="k-label mb-4">Profile at a glance</div>
+          <hr className="k-rule-hard mb-4" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5">
+            {summary.map(({ label, value }) => (
+              <div key={label}>
+                <div className="k-figure text-2xl mb-1">{value}</div>
+                <div className="k-label">{label}</div>
               </div>
-              <div className="h-[3px] rounded-full" style={{ background: 'var(--border-subtle)' }}>
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: 'linear-gradient(90deg, var(--accent-violet), var(--accent-cyan))' }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${score}%` }}
-                  transition={{ delay: i * 0.06 + 0.4, duration: 0.6 }}
+            ))}
+          </div>
+        </div>
+
+        {/* ── Charts ───────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {/* Radar */}
+          <div className="k-paper k-panel p-5">
+            <div className="k-label mb-4">Learning dimensions</div>
+            <hr className="k-rule-thin mb-2" />
+            <ResponsiveContainer width="100%" height={210}>
+              <RadarChart data={RADAR_DATA} margin={{ top: 12, right: 24, bottom: 8, left: 24 }}>
+                <PolarGrid stroke="var(--border-default)" />
+                <PolarAngleAxis dataKey="subject" tick={AXIS_TICK} />
+                <Radar
+                  name="You"
+                  dataKey="value"
+                  stroke="var(--text-primary)"
+                  fill="var(--amber)"
+                  fillOpacity={0.55}
+                  strokeWidth={2}
                 />
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
 
-      {/* ── Preferences ──────────────────────────────────────────────────── */}
-      <div>
-        <div
-          className="text-[10px] font-bold tracking-[0.18em] uppercase mb-4"
-          style={{ color: 'var(--text-muted)' }}
-        >
-          Profile preferences · used to personalize your path
+          {/* Bar */}
+          <div className="k-paper k-panel p-5">
+            <div className="k-label mb-4">Hours by category</div>
+            <hr className="k-rule-thin mb-2" />
+            <ResponsiveContainer width="100%" height={210}>
+              <BarChart data={CATEGORY_DATA} margin={{ top: 8, right: 5, bottom: 5, left: -20 }}>
+                <XAxis dataKey="name" tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <YAxis tick={AXIS_TICK} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={TOOLTIP_STYLE}
+                  cursor={{ fill: 'rgba(20,20,16,0.05)' }}
+                />
+                <Bar
+                  dataKey="hours"
+                  fill="var(--amber)"
+                  stroke="var(--text-primary)"
+                  strokeWidth={2}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-3">
-          {[
-            { label: 'Learning style', value: 'Hands-on' },
-            { label: 'Preferred formats', value: 'Video, Interactive' },
-            { label: 'Weekly hours', value: `${CURRENT_USER.weeklyHoursAvailable}h available` },
-            { label: 'Velocity', value: '1.3× average' },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <div className="text-[10px] mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</div>
-              <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{value}</div>
-            </div>
-          ))}
+
+        {/* ── Learning traits ──────────────────────────────────────────── */}
+        <div className="k-paper k-panel p-5">
+          <div className="k-label mb-4">Learning traits</div>
+          <hr className="k-rule-hard mb-5" />
+          <div className="space-y-5">
+            {LEARNING_TRAITS.map(({ label, score, description }, i) => (
+              <motion.div
+                key={label}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.06 + 0.2 }}
+              >
+                <div className="flex items-baseline justify-between gap-4 mb-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{label}</div>
+                    <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{description}</div>
+                  </div>
+                  <span className="k-figure text-base flex-shrink-0">{score}%</span>
+                </div>
+                <div className="k-meter">
+                  {/* The fill's own CSS transition would fight the frame-by-frame
+                      width this animation writes, so it is disabled here. */}
+                  <motion.div
+                    className="k-meter-fill"
+                    style={{ transition: 'none' }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${score}%` }}
+                    transition={{ delay: i * 0.06 + 0.4, duration: 0.6 }}
+                  />
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Preferences ──────────────────────────────────────────────── */}
+        <div className="k-paper k-panel p-5">
+          <div className="k-label mb-4">Profile preferences · used to personalize your path</div>
+          <hr className="k-rule-hard mb-5" />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Learning style', value: 'Hands-on' },
+              { label: 'Preferred formats', value: 'Video, Interactive' },
+              { label: 'Weekly hours', value: `${CURRENT_USER.weeklyHoursAvailable}h available` },
+              { label: 'Velocity', value: '1.3× average' },
+            ].map(({ label, value }) => (
+              <div key={label} className="k-well p-3">
+                <div className="k-label mb-1.5">{label}</div>
+                <div className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>{value}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

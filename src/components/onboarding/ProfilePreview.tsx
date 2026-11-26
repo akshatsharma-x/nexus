@@ -2,20 +2,41 @@
 
 import { motion, useReducedMotion } from 'framer-motion';
 import type { OnboardingProfile } from '@/lib/types';
+import { resourceTypeLabel } from '@/lib/utils';
 
 type FieldStatus = 'known' | 'partial' | 'unknown';
 
-function StatusDot({ status }: { status: FieldStatus }) {
-  const colors: Record<FieldStatus, string> = {
-    known: 'var(--accent-green)',
-    partial: 'var(--accent-amber)',
-    unknown: 'var(--border-strong)',
-  };
+const STATUS_TEXT: Record<FieldStatus, string> = {
+  known: 'Confirmed',
+  partial: 'Inferred',
+  unknown: 'Not captured yet',
+};
+
+/* Three printer's marks instead of three colours: a filled block, an outline,
+   a rule. They carry no meaning on their own — the status is always spelled out
+   for assistive tech beside them — but they make the document scannable
+   without a legend and without a second hue. */
+function StatusMark({ status }: { status: FieldStatus }) {
+  if (status === 'unknown') {
+    return (
+      <span
+        aria-hidden="true"
+        className="flex-shrink-0 inline-block"
+        style={{ width: '9px', height: '2px', marginTop: '6px', background: 'var(--text-muted)' }}
+      />
+    );
+  }
   return (
     <span
-      className="flex-shrink-0 inline-block w-[5px] h-[5px] rounded-full mt-[3px]"
-      style={{ background: colors[status] }}
       aria-hidden="true"
+      className="flex-shrink-0 inline-block"
+      style={{
+        width: '9px',
+        height: '9px',
+        marginTop: '2px',
+        background: status === 'known' ? 'var(--text-primary)' : 'transparent',
+        border: '2px solid var(--text-primary)',
+      }}
     />
   );
 }
@@ -33,23 +54,22 @@ function Section({
 }) {
   return (
     <motion.div
-      className="space-y-1.5"
+      className="space-y-1.5 pt-3"
+      style={{ borderTop: '1px solid var(--border-subtle)' }}
       initial={shouldReduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      <div className="flex items-center gap-2">
-        <StatusDot status={status} />
-        <span
-          className="text-[10px] font-semibold tracking-[0.12em] uppercase"
-          style={{ color: 'var(--text-muted)' }}
-        >
+      <div className="flex items-start gap-2">
+        <StatusMark status={status} />
+        <span className="k-label" style={{ color: 'var(--text-tertiary)' }}>
           {label}
         </span>
+        <span className="sr-only">{STATUS_TEXT[status]}</span>
       </div>
-      <div className="pl-3.5">
+      <div className="pl-[17px]">
         {children ?? (
-          <span className="text-[12px]" style={{ color: 'var(--text-tertiary)' }}>
+          <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
             —
           </span>
         )}
@@ -61,31 +81,31 @@ function Section({
 function SkillGroup({
   label,
   skills,
-  color,
+  mark,
   shouldReduce,
 }: {
   label: string;
   skills: string[];
-  color: string;
+  mark: FieldStatus;
   shouldReduce: boolean | null;
 }) {
   if (skills.length === 0) return null;
   return (
     <motion.div
-      className="space-y-1.5"
+      className="space-y-1"
       initial={shouldReduce ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.35 }}
     >
-      <div
-        className="text-[10px] font-semibold tracking-[0.12em] uppercase"
-        style={{ color }}
-      >
-        {label}
+      <div className="flex items-start gap-2">
+        <StatusMark status={mark} />
+        <span className="k-label" style={{ color: 'var(--text-tertiary)' }}>
+          {label}
+        </span>
       </div>
-      <div className="pl-3.5 space-y-0.5">
+      <div className="pl-[17px]">
         {skills.map(s => (
-          <div key={s} className="text-[12px]" style={{ color: 'var(--text-primary)' }}>
+          <div key={s} className="text-[13px] leading-[1.6]" style={{ color: 'var(--text-primary)' }}>
             {s}
           </div>
         ))}
@@ -117,18 +137,18 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
     profile.currentRole && profile.experienceLevel ? 'known' : hasStart ? 'partial' : 'unknown';
 
   return (
-    <div className="space-y-5">
-      <div
-        className="text-[10px] font-bold tracking-[0.15em] uppercase"
-        style={{ color: 'var(--text-muted)' }}
-      >
-        Your Profile
+    <div className="space-y-4">
+      <div>
+        <div className="k-slug">Your profile</div>
+        <p className="text-[12px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+          Written as we talk. Nothing is fixed until you confirm it.
+        </p>
       </div>
 
       <Section label="Goal" status={goalStatus} shouldReduce={shouldReduce}>
         {(hasGoal || profile.goalRaw) ? (
           <span className="text-[13px] leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-            {profile.targetRole ?? 'Analysing…'}
+            {profile.targetRole || 'Reading your answer…'}
           </span>
         ) : undefined}
       </Section>
@@ -142,7 +162,7 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
               </div>
             )}
             {profile.experienceLevel && (
-              <div className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>
+              <div className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>
                 {profile.experienceLevel.charAt(0).toUpperCase() + profile.experienceLevel.slice(1)}
               </div>
             )}
@@ -151,23 +171,26 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
       </Section>
 
       {hasSkills && (
-        <div className="space-y-3">
+        <div
+          className="space-y-3 pt-3"
+          style={{ borderTop: '1px solid var(--border-subtle)' }}
+        >
           <SkillGroup
             label="Strong"
             skills={strongSkills.map(s => s.name)}
-            color="var(--accent-green)"
+            mark="known"
             shouldReduce={shouldReduce}
           />
           <SkillGroup
             label="Comfortable"
             skills={comfortableSkills.map(s => s.name)}
-            color="var(--accent-violet-bright)"
+            mark="partial"
             shouldReduce={shouldReduce}
           />
           <SkillGroup
             label="Developing"
             skills={learningSkills.map(s => s.name)}
-            color="var(--accent-amber)"
+            mark="unknown"
             shouldReduce={shouldReduce}
           />
         </div>
@@ -180,7 +203,7 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
       >
         {hasTimeline ? (
           <span className="text-[13px]" style={{ color: 'var(--text-primary)' }}>
-            {profile.targetDateRaw ??
+            {profile.targetDateRaw ||
               profile.targetDate?.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </span>
         ) : undefined}
@@ -193,7 +216,7 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
       >
         {hasAvail ? (
           <span className="text-[13px]" style={{ color: 'var(--text-primary)' }}>
-            {profile.weeklyHoursAvailable}h / week
+            {profile.weeklyHoursAvailable}h per week
           </span>
         ) : undefined}
       </Section>
@@ -201,7 +224,7 @@ export function ProfilePreview({ profile }: ProfilePreviewProps) {
       {hasPrefs && (
         <Section label="Learning style" status="known" shouldReduce={shouldReduce}>
           <span className="text-[13px]" style={{ color: 'var(--text-primary)' }}>
-            {(profile.learningFormatPreference ?? []).join(', ')}
+            {(profile.learningFormatPreference ?? []).map(resourceTypeLabel).join(', ')}
           </span>
         </Section>
       )}

@@ -296,6 +296,8 @@ export interface AIMessage {
   skillRefs?: string[];
   resourceRefs?: string[];
   actionSuggested?: string;
+  /** Where an assistant reply came from: the model, or the local fallback. */
+  source?: 'ai' | 'fallback';
 }
 
 export interface AIConversation {

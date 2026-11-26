@@ -7,7 +7,13 @@ import * as THREE from 'three';
 import { fibonacciSphere } from '@/lib/visualization/sphereLayout';
 import type { SphereSkill, SphereConnection } from '@/lib/visualization/sphereTypes';
 
-// ─── Color map ────────────────────────────────────────────────────────────────
+// ─── Palette ──────────────────────────────────────────────────────────────────
+
+// The room's two non-data colours, mirroring --amber and --paper. Amber is the
+// warm accent — the goal ring, the path, the key light — and paper is the ink
+// the scene draws its own rules in. Neither carries mastery meaning.
+const AMBER = 0xeab54c;
+const PAPER = 0xf2efe9;
 
 const MASTERY_COLOR: Record<SphereSkill['mastery'], number> = {
   mastered:   0x10b981,
@@ -39,7 +45,7 @@ function OrbitalRings() {
       {configs.map((c, i) => (
         <mesh key={i} rotation={[c.rx, c.ry, c.rz]}>
           <torusGeometry args={[c.r, 0.003, 6, 90]} />
-          <meshBasicMaterial color={0xffffff} transparent opacity={c.opacity} depthWrite={false} />
+          <meshBasicMaterial color={PAPER} transparent opacity={c.opacity} depthWrite={false} />
         </mesh>
       ))}
     </>
@@ -50,32 +56,33 @@ function OrbitalRings() {
 
 function CentralCore({ reducedMotion }: { reducedMotion: boolean }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const glowRef = useRef<THREE.Mesh>(null);
+  const haloRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
     if (reducedMotion) return;
     const t = clock.elapsedTime;
-    const scale = 1 + Math.sin(t * 1.1) * 0.07;
+    const scale = 1 + Math.sin(t * 1.1) * 0.035;
     if (meshRef.current) meshRef.current.scale.setScalar(scale);
-    if (glowRef.current) glowRef.current.scale.setScalar(scale * 1.6);
+    if (haloRef.current) haloRef.current.scale.setScalar(scale * 1.6);
   });
 
   return (
     <group>
-      {/* Outer glow halo */}
-      <mesh ref={glowRef}>
+      {/* Outer halo — a single, very faint falloff so the core reads as a lit
+          marker rather than a bulb */}
+      <mesh ref={haloRef}>
         <sphereGeometry args={[0.18, 16, 16]} />
-        <meshBasicMaterial color={0x7c3aed} transparent opacity={0.06} side={THREE.BackSide} depthWrite={false} />
+        <meshBasicMaterial color={AMBER} transparent opacity={0.04} side={THREE.BackSide} depthWrite={false} />
       </mesh>
       {/* Core sphere */}
       <mesh ref={meshRef}>
         <sphereGeometry args={[0.1, 16, 16]} />
         <meshStandardMaterial
-          color={0x7c3aed}
-          emissive={0x7c3aed}
-          emissiveIntensity={1.2}
+          color={AMBER}
+          emissive={AMBER}
+          emissiveIntensity={0.55}
           transparent
-          opacity={0.88}
+          opacity={0.92}
         />
       </mesh>
     </group>
@@ -116,7 +123,7 @@ function AmbientParticles({ reducedMotion }: { reducedMotion: boolean }) {
 
   return (
     <points ref={pointsRef} geometry={geometry}>
-      <pointsMaterial size={0.018} color={0xffffff} transparent opacity={0.28} sizeAttenuation depthWrite={false} />
+      <pointsMaterial size={0.018} color={PAPER} transparent opacity={0.24} sizeAttenuation depthWrite={false} />
     </points>
   );
 }
@@ -181,17 +188,20 @@ function ConnectionLines({ skills, connections, positions, selectedSkillId, conn
     <>
       {relatedGeo && (
         <lineSegments geometry={relatedGeo}>
-          <lineBasicMaterial color={0xffffff} transparent opacity={0.08 * dimFactor} depthWrite={false} />
+          <lineBasicMaterial color={PAPER} transparent opacity={0.08 * dimFactor} depthWrite={false} />
         </lineSegments>
       )}
       {prereqGeo && (
         <lineSegments geometry={prereqGeo}>
-          <lineBasicMaterial color={0x8b5cf6} transparent opacity={0.18 * dimFactor} depthWrite={false} />
+          <lineBasicMaterial color={0x8b5cf6} transparent opacity={0.15 * dimFactor} depthWrite={false} />
         </lineSegments>
       )}
+      {/* Drawn in paper rather than a brighter violet: the selection's edges are
+          the rules of the diagram, and ink reads as structure where more of the
+          same hue would just read as a brighter glow. */}
       {highlightedGeo && (
         <lineSegments geometry={highlightedGeo}>
-          <lineBasicMaterial color={0x8b5cf6} transparent opacity={0.6} depthWrite={false} />
+          <lineBasicMaterial color={PAPER} transparent opacity={0.45} depthWrite={false} />
         </lineSegments>
       )}
     </>
@@ -215,13 +225,13 @@ function PathParticle({ from, to, phaseOffset }: PathParticleProps) {
     const t = ((clock.elapsedTime * 0.28 + phaseOffset) % 1 + 1) % 1;
     tmpPos.current.lerpVectors(from, to, t);
     meshRef.current.position.copy(tmpPos.current);
-    (meshRef.current.material as THREE.MeshBasicMaterial).opacity = Math.sin(t * Math.PI) * 0.75;
+    (meshRef.current.material as THREE.MeshBasicMaterial).opacity = Math.sin(t * Math.PI) * 0.6;
   });
 
   return (
     <mesh ref={meshRef}>
       <sphereGeometry args={[0.022, 6, 6]} />
-      <meshBasicMaterial color={0x22d3ee} transparent opacity={0} depthWrite={false} />
+      <meshBasicMaterial color={AMBER} transparent opacity={0} depthWrite={false} />
     </mesh>
   );
 }
@@ -296,10 +306,12 @@ function SkillNodeMesh({
 
   const geometry = useMemo(() => new THREE.SphereGeometry(radius, 12, 12), [radius]);
 
+  // Nodes are lit objects, not lamps: the emissive term only lifts them off the
+  // room enough to stay readable, and the modelling is left to the scene lights.
   const material = useMemo(() => new THREE.MeshStandardMaterial({
     color: new THREE.Color(MASTERY_COLOR[skill.mastery]),
     emissive: new THREE.Color(MASTERY_EMISSIVE[skill.mastery]),
-    emissiveIntensity: skill.mastery === 'locked' ? 0 : 0.18,
+    emissiveIntensity: skill.mastery === 'locked' ? 0 : 0.1,
     transparent: true,
     opacity: 0.85,
   }), [skill.mastery]);
@@ -308,6 +320,16 @@ function SkillNodeMesh({
     (meshRef as React.MutableRefObject<THREE.Mesh | null>).current = mesh;
     registerMesh(skill.id, mesh);
   }, [skill.id, registerMesh]);
+
+  // Emissive is animated imperatively, as R3F intends, but through the object
+  // each callback is handed — the frame loop's mesh, the pointer event's
+  // eventObject — rather than the memoized material, which the React Compiler
+  // treats as a render value it may not mutate. It is the same material: the
+  // mesh renders with `material` below.
+  const setEmissive = (object: THREE.Object3D, value: number) => {
+    const mat = (object as THREE.Mesh).material;
+    if (mat instanceof THREE.MeshStandardMaterial) mat.emissiveIntensity = value;
+  };
 
   useFrame(() => {
     const mesh = meshRef.current;
@@ -331,23 +353,23 @@ function SkillNodeMesh({
     if (!reducedMotion && skill.isRecommended && !isSelected) {
       // use mesh userData to accumulate time
       mesh.userData.t = (mesh.userData.t ?? 0) + 0.016;
-      const pulse = 0.18 + Math.sin(mesh.userData.t * 2.2) * 0.14;
-      material.emissiveIntensity = pulse;
+      const pulse = 0.14 + Math.sin(mesh.userData.t * 2.2) * 0.07;
+      setEmissive(mesh, pulse);
     }
   });
 
   const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     document.body.style.cursor = 'pointer';
-    material.emissiveIntensity = 0.45;
+    setEmissive(e.eventObject, 0.28);
     onPointerEnter(skill, e);
-  }, [skill, onPointerEnter, material]);
+  }, [skill, onPointerEnter]);
 
-  const handlePointerOut = useCallback(() => {
+  const handlePointerOut = useCallback((e: ThreeEvent<PointerEvent>) => {
     document.body.style.cursor = 'auto';
-    material.emissiveIntensity = skill.isRecommended ? 0.25 : 0.18;
+    setEmissive(e.eventObject, skill.isRecommended ? 0.16 : 0.1);
     onPointerLeave();
-  }, [skill.isRecommended, onPointerLeave, material]);
+  }, [skill.isRecommended, onPointerLeave]);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -369,11 +391,11 @@ function SkillNodeMesh({
 
 // ─── Goal marker ──────────────────────────────────────────────────────────────
 
-function GoalMarker({ position }: { position: [number, number, number] }) {
+function GoalMarker({ position, reducedMotion }: { position: [number, number, number]; reducedMotion: boolean }) {
   const ringRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
-    if (!ringRef.current) return;
+    if (reducedMotion || !ringRef.current) return;
     ringRef.current.rotation.z = clock.elapsedTime * 0.4;
     ringRef.current.rotation.x = clock.elapsedTime * 0.25;
   });
@@ -385,7 +407,7 @@ function GoalMarker({ position }: { position: [number, number, number] }) {
     <group position={[x, y, z + offset]}>
       <mesh ref={ringRef}>
         <torusGeometry args={[0.14, 0.008, 8, 30]} />
-        <meshBasicMaterial color={0x22d3ee} transparent opacity={0.55} depthWrite={false} />
+        <meshBasicMaterial color={AMBER} transparent opacity={0.7} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -548,10 +570,14 @@ function SceneContent({
 
   return (
     <group ref={groupRef}>
-      <ambientLight intensity={0.12} />
-      <pointLight position={[0, 0, 0]} intensity={1.2} color={0x7c3aed} decay={2} />
-      <directionalLight position={[4, 6, 5]} intensity={0.45} color={0xffffff} />
-      <directionalLight position={[-3, -2, -4]} intensity={0.12} color={0x06b6d4} />
+      {/* Lighting is a studio rig, not a light show: a white key does the
+          modelling, ambient carries the shadow side, and the two accent lamps are
+          low enough to stay a warm centre and a cool rim. The centre lamp is
+          amber so the sphere's own light matches the product's one accent. */}
+      <ambientLight intensity={0.2} />
+      <pointLight position={[0, 0, 0]} intensity={0.7} color={AMBER} decay={2} />
+      <directionalLight position={[4, 6, 5]} intensity={0.55} color={0xffffff} />
+      <directionalLight position={[-3, -2, -4]} intensity={0.14} color={0x8ea6b8} />
 
       <CentralCore reducedMotion={reducedMotion} />
       <OrbitalRings />
@@ -590,7 +616,7 @@ function SceneContent({
       ))}
 
       {goalIndex >= 0 && (
-        <GoalMarker position={positions[goalIndex]} />
+        <GoalMarker position={positions[goalIndex]} reducedMotion={reducedMotion} />
       )}
     </group>
   );
